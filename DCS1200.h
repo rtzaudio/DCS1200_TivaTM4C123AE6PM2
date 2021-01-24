@@ -100,12 +100,13 @@ typedef struct _SYSCONFIG
 
 typedef struct _SYSDATA
 {
+    /* Global Handles */
     I2C_Handle i2c0;
     SPI_Handle spiSpare;
     SPI_Handle spiIoEx[3];
     MCP23S17_Handle handle_MonMode[3];
     MCP23S17_Handle handle_RecHold[3];
-
+    /* Global Data */
     uint8_t trackState[DCS_MAX_TRACKS];
 } SYSDATA;
 
