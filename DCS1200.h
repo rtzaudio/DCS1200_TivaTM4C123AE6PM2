@@ -77,6 +77,8 @@
 
 #define DCS_TRACK_MASK      0x07        /* low 3-bits are track mode  */
 
+#define TRACK_MODE(mask)    (mask & DCS_TRACK_MASK)
+
 /* Upper bits indicate ready/record state */
 #define DCS_T_RECORD        0x40        /* track is recording now     */
 #define DCS_T_READY         0x80        /* track is armed for record  */
