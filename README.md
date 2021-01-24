@@ -1,5 +1,5 @@
 # DCS1200_TivaTM4C123AE6PM
-Digital Channle Switcher for the Ampex MM1200 Professional Studio Recorder
+Digital Channel Switcher for the Ampex MM1200 Professional Studio Recorder
 
 By [Bob Starr](http://www.rtzaudio.com).
 
