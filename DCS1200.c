@@ -336,13 +336,14 @@ uint16_t GetRecordHoldMaskFromTrackState(uint8_t* tracks)
 {
     size_t i;
     uint16_t mask = 0;
+    uint16_t bit  = 0x01;
 
     for (i=0; i < 8; i++)
     {
         if (tracks[i] & DCS_T_READY)
-            mask |= 0x80;
+            mask |= bit;
 
-        mask >>= 1;
+        bit <<= 1;
     }
 
     return mask;
