@@ -89,10 +89,13 @@ uint8_t IPC_GetNextSeqNum(void)
 {
     /* increment sequence number atomically */
     UInt key = Hwi_disable();
+
     /* Get the next frame sequence number */
     uint8_t seqnum = s_seqnum;
+
     /* Increment the servers sequence number */
     s_seqnum = IPC_INC_SEQ(seqnum);
+
     /* re-enable ints */
     Hwi_restore(key);
 

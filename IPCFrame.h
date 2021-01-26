@@ -1,7 +1,7 @@
 /*
  * IPC - Serial InterProcess Message Protocol
  *
- * Copyright (C) 2016-2020, RTZ Professional Audio, LLC. ALL RIGHTS RESERVED.
+ * Copyright (C) 2016-2021, RTZ Professional Audio, LLC. ALL RIGHTS RESERVED.
  *
  * RTZ is registered trademark of RTZ Professional Audio, LLC
  *
@@ -95,8 +95,6 @@
 
 #ifndef _IPCFRAME_H_
 #define _IPCFRAME_H_
-
-#include "IPCFrame.h"
 
 /*** IPC Constants and Defines *********************************************/
 
