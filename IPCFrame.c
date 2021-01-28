@@ -81,7 +81,17 @@
 static uint8_t s_seqnum = IPC_MIN_SEQ;
 
 //*****************************************************************************
-// Initialize FCB structure with some defaults.
+//
+// Name:        IPC_InitFCB()
+//
+// Synopsis:    void IPC_InitFCB(fcb)
+//
+//              IPC_FCB*    fcb     - Ptr to frame control block
+//
+// Description: Initialize FCB structure with some defaults.
+//
+// Return:      void
+//
 //*****************************************************************************
 
 void IPC_InitFCB(IPC_FCB* fcb)
@@ -89,33 +99,71 @@ void IPC_InitFCB(IPC_FCB* fcb)
     fcb->type      = IPC_MAKETYPE(0, IPC_MSG_ONLY);
     fcb->seqnum    = IPC_MIN_SEQ;
     fcb->acknak    = 0;
-    fcb->rxbuf     = NULL;
-    fcb->rxbufsize = 0;
-    fcb->rxlen     = 0;
-    fcb->txbuf     = NULL;
-    fcb->txbufsize = 0;
-    fcb->txlen     = 0;
+    fcb->rsvd      = 0;
 }
 
 //*****************************************************************************
-// This function returns the next available transmit and increments the
-// counter to the next frame sequence number atomically.
+//
+// Name:        IPC_GetSequenceNum()
+//
+// Synopsis:    void IPC_GetSequenceNum()
+//
+// Description: his function returns the next available transmit and increments
+//              to the next frame sequence number atomically.
+//
+// Return:      Returns the next tx frame sequence number.
+//
 //*****************************************************************************
 
 uint8_t IPC_GetSequenceNum(void)
 {
-    UInt key = Hwi_disable();           /* increment atomically      */
-    uint8_t seqnum = s_seqnum;          /* Get next sequence number  */
-    s_seqnum = IPC_INC_SEQ(seqnum);     /* Increment sequence number */
-    Hwi_restore(key);                   /* re-enable interrupts      */
+    /* increment atomically */
+    UInt key = Hwi_disable();
+
+    /* Get next sequence number */
+    uint8_t seqnum = s_seqnum;
+
+    /* Increment sequence number */
+    s_seqnum = IPC_INC_SEQ(seqnum);
+
+    /* re-enable interrupts */
+    Hwi_restore(key);
+
     return seqnum;
 }
 
 //*****************************************************************************
-// Receive an IPC frame from the serial port
+//
+// Name:        IPC_RxFrame()
+//
+// Synopsis:    int IPC_RxFrame(handle, fcb, txtbuf, txtlen)
+//
+//              UART_Handle handle  - UART handle
+//
+//              IPC_FCB*    fcb     - Ptr to frame control block
+//
+//              void*       txtbuf  - Ptr to msg txt rx buffer
+//
+//              uint16_t*   txtlen  - Specifies the max rx buffer on entry and
+//                                    returns actual message length received
+//                                    on return.
+//
+// Description: Receive an IPC frame from the serial port. On entry the value
+//              pointed to by txtlen contains the maximum size of the rx
+//              message buffer - this is used to check for overflow.
+//              Upon return, it contains the actual length of the message
+//              received. If no message or ACK only message, it contains zero.
+//
+// Return:      Returns IPC_ERR_SUCCESS on success, otherwise error code.
+//
 //*****************************************************************************
 
-int IPC_RxFrame(UART_Handle handle, IPC_FCB* fcb)
+int IPC_RxFrame(
+        UART_Handle handle,
+        IPC_FCB*    fcb,
+        void*       txtbuf,
+        uint16_t*   txtlen
+        )
 {
     int i;
     int rc = IPC_ERR_SUCCESS;
@@ -127,10 +175,11 @@ int IPC_RxFrame(UART_Handle handle, IPC_FCB* fcb)
     uint16_t rxcrc;
     uint16_t crc = 0;
 
-    uint8_t *textbuf = (uint8_t*)fcb->rxbuf;
-    uint16_t textlen = (uint16_t)fcb->rxbufsize;    /* max rx buffer size */
+    uint8_t *textbuf = txtbuf;
+    uint16_t textlen = *txtlen;
 
-    fcb->rxlen = 0;
+    /* No message text bytes received yet */
+    *txtlen = 0;
 
     /* First, try to synchronize to 0x79 SOF byte */
 
@@ -243,8 +292,8 @@ int IPC_RxFrame(UART_Handle handle, IPC_FCB* fcb)
         /* Get the frame length received and validate it */
         uint16_t rxtextlen = (size_t)((msb << 8) | lsb) & 0xFFFF;
 
-        /* Return the message text length */
-        fcb->rxlen = rxtextlen;
+        /* Return the message text length received */
+        *txtlen = rxtextlen;
 
         /* The text length should be the frame overhead minus the preamble overhead
          * plus the text length specified in the received frame. If these don't match
@@ -300,10 +349,36 @@ int IPC_RxFrame(UART_Handle handle, IPC_FCB* fcb)
 }
 
 //*****************************************************************************
-// Transmit an IPC frame of data out the serial port
+//
+// Name:        IPC_TxFrame()
+//
+// Synopsis:    int IPC_TxFrame(handle, fcb, txtbuf, txtlen)
+//
+//              UART_Handle handle  - UART handle
+//
+//              IPC_FCB*    fcb     - Ptr to frame control block
+//
+//              uint8_t*    txtbuf  - Ptr to msg txt tx buffer
+//
+//              uint16_t*   txtlen  - Specifies the length of the message
+//                                    to transmit, or zero on return if error.
+//
+// Description: Transmit an IPC frame from the serial port. On entry the value
+//              pointed to by txtlen contains the number of message bytes
+//              to transmit. This will be reset to zero if an error occurs
+//              attempting to transmit the message or if an ACK only
+//              frame is sent.
+//
+// Return:      Returns IPC_ERR_SUCCESS on success, otherwise error code.
+//
 //*****************************************************************************
 
-int IPC_TxFrame(UART_Handle handle, IPC_FCB* fcb)
+int IPC_TxFrame(
+        UART_Handle handle,
+        IPC_FCB*    fcb,
+        void*       txtbuf,
+        uint16_t*   txtlen
+        )
 {
     uint8_t b;
     uint8_t type;
@@ -311,10 +386,12 @@ int IPC_TxFrame(UART_Handle handle, IPC_FCB* fcb)
     uint16_t framelen;
     uint16_t crc;
 
-    uint8_t *textbuf = (uint8_t*)fcb->txbuf;
-    uint16_t textlen = (uint16_t)fcb->txbufsize;
+    uint8_t *textbuf = txtbuf;
+    uint16_t textlen = *txtlen;
 
-    fcb->txlen = 0;
+    /* No message text bytes transmitted yet */
+    if (txtlen)
+        *txtlen = 0;
 
     /* First check the text length is valid */
     if (textlen > IPC_MAX_TEXT_LEN)
@@ -417,7 +494,8 @@ int IPC_TxFrame(UART_Handle handle, IPC_FCB* fcb)
                 UART_write(handle, &b, 1);
             }
 
-            fcb->txlen = textlen;
+            if (txtlen)
+              *txtlen = textlen;
         }
     }
 

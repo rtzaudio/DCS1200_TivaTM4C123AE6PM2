@@ -82,7 +82,7 @@
 #include "Utils.h"
 #include "IPCFrame.h"
 
-#define RXBUFSIZ    128
+#define RXBUFSIZ    32
 
 /* Global Data Items */
 SYSCONFIG g_cfg;
@@ -435,6 +435,7 @@ void WriteAllRecordHoldModes(void)
 Void MainTask(UArg a0, UArg a1)
 {
     int rc;
+    uint16_t msgLen;
     uint8_t* msgBuf;
     IPC_FCB fcb;
     Error_Block eb;
@@ -497,10 +498,9 @@ Void MainTask(UArg a0, UArg a1)
         /* Attempt to receive an IPC message packet */
         IPC_InitFCB(&fcb);
 
-        fcb.rxbuf     = msgBuf;
-        fcb.rxbufsize = RXBUFSIZ;
+        msgLen = RXBUFSIZ;
 
-        rc = IPC_RxFrame(uartHandle, &fcb);
+        rc = IPC_RxFrame(uartHandle, &fcb, msgBuf, &msgLen);
 
         /* No packet received, loop and continue waiting for a packet */
         if (rc == IPC_ERR_TIMEOUT)
@@ -513,10 +513,10 @@ Void MainTask(UArg a0, UArg a1)
             System_flush();
         }
 
-        if (fcb.rxlen == DCS_NUM_TRACKS)
+        if (msgLen == DCS_NUM_TRACKS)
         {
             /* Copy 24-tracks of the track state data to our global buffer */
-            memcpy(&g_sys.trackState[0], &msgBuf[0], DCS_NUM_TRACKS);
+            memcpy(&g_sys.trackState[0], msgBuf, DCS_NUM_TRACKS);
 
             /* Set all the monitor modes on the channel I/O cards */
             WriteAllMonitorModes();
@@ -527,7 +527,7 @@ Void MainTask(UArg a0, UArg a1)
             /* Transmit an ACK response back to the client */
             fcb.type = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
 
-            rc = IPC_TxFrame(uartHandle, &fcb);
+            rc = IPC_TxFrame(uartHandle, &fcb, NULL, NULL);
 
             if (rc != IPC_ERR_SUCCESS)
             {

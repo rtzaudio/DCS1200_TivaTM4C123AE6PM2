@@ -40,6 +40,8 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * ============================================================================ */
 
+#include "IPCDCS.h"
+
 /*** Global Constants ******************************************************/
 
 /* VERSION INFO - The min build specifies the minimum build required
@@ -66,22 +68,6 @@
 
 /* Timeout for SPI communications */
 #define TIMEOUT_SPI			500
-
-/*** Track State Constants *************************************************/
-
-#define DCS_NUM_TRACKS      24
-
-#define DCS_TRACK_REPRO     0x00        /* track is in repro mode     */
-#define DCS_TRACK_SYNC      0x01        /* track is in sync mode      */
-#define DCS_TRACK_INPUT     0x02        /* track is in input mode     */
-
-#define DCS_TRACK_MASK      0x07        /* low 3-bits are track mode  */
-
-#define TRACK_MODE(mask)    (mask & DCS_TRACK_MASK)
-
-/* Upper bits indicate ready/record state */
-#define DCS_T_RECORD        0x40        /* track is recording now     */
-#define DCS_T_READY         0x80        /* track is armed for record  */
 
 /*** System Structures *****************************************************/
 
