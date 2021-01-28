@@ -45,6 +45,7 @@
 #include <xdc/runtime/System.h>
 #include <xdc/runtime/Error.h>
 #include <xdc/runtime/Gate.h>
+#include <xdc/runtime/Memory.h>
 
 /* BIOS Header files */
 #include <ti/sysbios/BIOS.h>
@@ -79,6 +80,9 @@
 #include "MCP23S17.h"
 #include "DCS1200.h"
 #include "Utils.h"
+#include "IPCFrame.h"
+
+#define RXBUFSIZ    128
 
 /* Global Data Items */
 SYSCONFIG g_cfg;
@@ -375,7 +379,6 @@ void WriteAllMonitorModes(void)
 
     /* Read 8-bytes from the track state array and create 16-bit register mask */
     mask = GetMonitorMaskFromTrackState(&g_sys.trackState[0]);
-
     /* Set 16-bits on the I/O expander to configure the monitor modes */
     WriteRegisterMask(g_sys.handle_MonMode[0], mask);
 
@@ -383,7 +386,6 @@ void WriteAllMonitorModes(void)
 
     /* Read 8-bytes from the track state array and create 16-bit register mask */
     mask = GetMonitorMaskFromTrackState(&g_sys.trackState[8]);
-
     /* Set 16-bits on the I/O expander to configure the monitor modes */
     WriteRegisterMask(g_sys.handle_MonMode[1], mask);
 
@@ -391,7 +393,6 @@ void WriteAllMonitorModes(void)
 
     /* Read 8-bytes from the track state array and create 16-bit register mask */
     mask = GetMonitorMaskFromTrackState(&g_sys.trackState[16]);
-
     /* Set 16-bits on the I/O expander to configure the monitor modes */
     WriteRegisterMask(g_sys.handle_MonMode[2], mask);
 }
@@ -409,7 +410,6 @@ void WriteAllRecordHoldModes(void)
 
     /* Read 8-bytes from the track state array and create 16-bit register mask */
     mask = GetRecordHoldMaskFromTrackState(&g_sys.trackState[0]);
-
     /* Set 16-bits on the I/O expander to configure the monitor modes */
     WriteRegisterMask(g_sys.handle_RecHold[0], mask);
 
@@ -417,7 +417,6 @@ void WriteAllRecordHoldModes(void)
 
     /* Read 8-bytes from the track state array and create 16-bit register mask */
     mask = GetRecordHoldMaskFromTrackState(&g_sys.trackState[8]);
-
     /* Set 16-bits on the I/O expander to configure the monitor modes */
     WriteRegisterMask(g_sys.handle_RecHold[1], mask);
 
@@ -425,7 +424,6 @@ void WriteAllRecordHoldModes(void)
 
     /* Read 8-bytes from the track state array and create 16-bit register mask */
     mask = GetRecordHoldMaskFromTrackState(&g_sys.trackState[16]);
-
     /* Set 16-bits on the I/O expander to configure the monitor modes */
     WriteRegisterMask(g_sys.handle_RecHold[2], mask);
 }
@@ -436,7 +434,12 @@ void WriteAllRecordHoldModes(void)
 
 Void MainTask(UArg a0, UArg a1)
 {
-    //Error_Block eb;
+    int rc;
+    uint8_t* msgBuf;
+    IPC_FCB fcb;
+    Error_Block eb;
+    UART_Params uartParams;
+    UART_Handle uartHandle;
     //Task_Params taskParams;
 
     /* Initialize the default program data values */
@@ -447,21 +450,91 @@ Void MainTask(UArg a0, UArg a1)
     Init_Peripherals();
 
     /* Initialize the default system parameters */
-    SysConfig_init(&g_cfg);
+    SysConfig_Init(&g_cfg);
 
     /* Read the system configuration parameters from storage */
-    SysConfig_read(&g_cfg);
+    SysConfig_Read(&g_cfg);
 
     /* Initialize all the hardware devices */
     Init_Devices();
+
+    /* Open the UART for binary mode */
+
+    UART_Params_init(&uartParams);
+
+    uartParams.readMode       = UART_MODE_BLOCKING;
+    uartParams.writeMode      = UART_MODE_BLOCKING;
+    uartParams.readTimeout    = 1000;                   // 1 second read timeout
+    uartParams.writeTimeout   = BIOS_WAIT_FOREVER;
+    uartParams.readCallback   = NULL;
+    uartParams.writeCallback  = NULL;
+    uartParams.readReturnMode = UART_RETURN_FULL;
+    uartParams.writeDataMode  = UART_DATA_BINARY;
+    uartParams.readDataMode   = UART_DATA_BINARY;
+    uartParams.readEcho       = UART_ECHO_OFF;
+    uartParams.baudRate       = 250000;
+    uartParams.stopBits       = UART_STOP_ONE;
+    uartParams.parityType     = UART_PAR_NONE;
+
+    uartHandle = UART_open(Board_uartIPC, &uartParams);
+
+    if (uartHandle == NULL)
+        System_abort("Error initializing UART\n");
 
     /****************************************************************
      * Enter the main application button processing loop forever.
      ****************************************************************/
 
+    Error_init(&eb);
+
+    msgBuf = (uint8_t*)Memory_alloc(NULL, RXBUFSIZ, 0, &eb);
+
+    if (msgBuf == NULL)
+        System_abort("RxBuf allocation failed");
+
     for(;;)
     {
+        /* Attempt to receive an IPC message packet */
+        IPC_InitFCB(&fcb);
 
+        fcb.rxbuf     = msgBuf;
+        fcb.rxbufsize = RXBUFSIZ;
+
+        rc = IPC_RxFrame(uartHandle, &fcb);
+
+        /* No packet received, loop and continue waiting for a packet */
+        if (rc == IPC_ERR_TIMEOUT)
+            continue;
+
+        /* Check for any error attempting to read a packet */
+        if (rc != IPC_ERR_SUCCESS)
+        {
+            System_printf("ipc rx error %d\n", rc);
+            System_flush();
+        }
+
+        if (fcb.rxlen == DCS_NUM_TRACKS)
+        {
+            /* Copy 24-tracks of the track state data to our global buffer */
+            memcpy(&g_sys.trackState[0], &msgBuf[0], DCS_NUM_TRACKS);
+
+            /* Set all the monitor modes on the channel I/O cards */
+            WriteAllMonitorModes();
+
+            /* Set all record hold modes on the channel I/O cards */
+            WriteAllRecordHoldModes();
+
+            /* Transmit an ACK response back to the client */
+            fcb.type = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
+
+            rc = IPC_TxFrame(uartHandle, &fcb);
+
+            if (rc != IPC_ERR_SUCCESS)
+            {
+                System_printf("ipc tx error %d\n", rc);
+                System_flush();
+            }
+        }
     }
 }
 

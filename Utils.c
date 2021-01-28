@@ -86,12 +86,12 @@
 // Set default runtime values
 //*****************************************************************************
 
-void SysConfig_init(SYSCONFIG* p)
+void SysConfig_Init(SYSCONFIG* p)
 {
     /* default servo parameters */
     p->version  = MAKEREV(FIRMWARE_VER, FIRMWARE_REV);
     p->build    = FIRMWARE_BUILD;
-    p->debug    = 0;           /* debug mode 0=off                 */
+    p->debug    = 0;
 }
 
 //*****************************************************************************
@@ -101,7 +101,7 @@ void SysConfig_init(SYSCONFIG* p)
 //          -1 = Error writing EEPROM data
 //*****************************************************************************
 
-int32_t SysConfig_write(SYSCONFIG* sp)
+int32_t SysConfig_Write(SYSCONFIG* sp)
 {
     int32_t rc = 0;
 
@@ -127,9 +127,9 @@ int32_t SysConfig_write(SYSCONFIG* sp)
 //
 //*****************************************************************************
 
-int32_t SysConfig_read(SYSCONFIG* sp)
+int32_t SysConfig_Read(SYSCONFIG* sp)
 {
-    SysConfig_init(sp);
+    SysConfig_Init(sp);
 
     uint32_t uAddress = 0;
 
@@ -140,9 +140,9 @@ int32_t SysConfig_read(SYSCONFIG* sp)
         System_printf("ERROR Reading Config Parameters - Resetting Defaults...\n");
         System_flush();
 
-        SysConfig_init(sp);
+        SysConfig_Init(sp);
 
-        SysConfig_write(sp);
+        SysConfig_Write(sp);
 
         return -1;
     }
@@ -152,9 +152,9 @@ int32_t SysConfig_read(SYSCONFIG* sp)
         System_printf("WARNING New Firmware Version - Resetting Defaults...\n");
         System_flush();
 
-        SysConfig_init(sp);
+        SysConfig_Init(sp);
 
-        SysConfig_write(sp);
+        SysConfig_Write(sp);
 
         return -1;
     }
@@ -164,9 +164,9 @@ int32_t SysConfig_read(SYSCONFIG* sp)
         System_printf("WARNING New Firmware BUILD - Resetting Defaults...\n");
         System_flush();
 
-        SysConfig_init(sp);
+        SysConfig_Init(sp);
 
-        SysConfig_write(sp);
+        SysConfig_Write(sp);
 
         return -1;
     }

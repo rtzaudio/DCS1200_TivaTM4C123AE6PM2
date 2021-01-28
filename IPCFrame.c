@@ -81,161 +81,41 @@
 static uint8_t s_seqnum = IPC_MIN_SEQ;
 
 //*****************************************************************************
+// Initialize FCB structure with some defaults.
+//*****************************************************************************
+
+void IPC_InitFCB(IPC_FCB* fcb)
+{
+    fcb->type      = IPC_MAKETYPE(0, IPC_MSG_ONLY);
+    fcb->seqnum    = IPC_MIN_SEQ;
+    fcb->acknak    = 0;
+    fcb->rxbuf     = NULL;
+    fcb->rxbufsize = 0;
+    fcb->rxlen     = 0;
+    fcb->txbuf     = NULL;
+    fcb->txbufsize = 0;
+    fcb->txlen     = 0;
+}
+
+//*****************************************************************************
 // This function returns the next available transmit and increments the
 // counter to the next frame sequence number atomically.
 //*****************************************************************************
 
-uint8_t IPC_GetNextSeqNum(void)
+uint8_t IPC_GetSequenceNum(void)
 {
-    /* increment sequence number atomically */
-    UInt key = Hwi_disable();
-
-    /* Get the next frame sequence number */
-    uint8_t seqnum = s_seqnum;
-
-    /* Increment the servers sequence number */
-    s_seqnum = IPC_INC_SEQ(seqnum);
-
-    /* re-enable ints */
-    Hwi_restore(key);
-
+    UInt key = Hwi_disable();           /* increment atomically      */
+    uint8_t seqnum = s_seqnum;          /* Get next sequence number  */
+    s_seqnum = IPC_INC_SEQ(seqnum);     /* Increment sequence number */
+    Hwi_restore(key);                   /* re-enable interrupts      */
     return seqnum;
-}
-
-//*****************************************************************************
-// Transmit an IPC frame of data out the serial port
-//*****************************************************************************
-
-int IPC_TxFrame(UART_Handle handle, IPC_FCB* fcb, void* txtbuf, uint16_t txtlen)
-{
-    uint8_t b;
-    uint8_t type;
-    uint16_t i;
-    uint16_t framelen;
-    uint16_t crc;
-
-    uint8_t *textbuf = (uint8_t*)txtbuf;
-    uint16_t textlen = (uint16_t)txtlen;
-
-    /* First check the text length is valid */
-    if (textlen > IPC_MAX_TEXT_LEN)
-        return IPC_ERR_TEXT_LEN;
-
-    /* Get the frame type less any flag bits */
-    type = (fcb->type & IPC_TYPE_MASK);
-
-    /* Are we sending a ACK or NAK only frame? */
-    if ((type == IPC_ACK_ONLY) || (type == IPC_NAK_ONLY))
-    {
-        textbuf = NULL;
-        textlen = 0;
-
-        framelen = IPC_ACK_FRAME_LEN;
-
-        /* Set the ACK/NAK flag bit */
-        fcb->type |= IPC_F_ACKNAK;
-    }
-    else
-    {
-        /* Build the frame length with text length given */
-        framelen = textlen + (IPC_FRAME_OVERHEAD - IPC_PREAMBLE_OVERHEAD);
-
-        /* If message is piggyback ACK/NAK, set flag bit also */
-        if ((type == IPC_MSG_ACK) || (type == IPC_MSG_NAK))
-            fcb->type |= IPC_F_ACKNAK;
-        else
-            fcb->type &= ~(IPC_F_ACKNAK);
-    }
-
-    /* Send the preamble MSB for the frame start */
-    b = IPC_PREAMBLE_MSB;
-    UART_write(handle, &b, 1);
-
-    /* Send the preamble LSB for the frame start */
-    b = IPC_PREAMBLE_LSB;
-    UART_write(handle, &b, 1);
-
-    /* CRC starts here, sum in the seed byte first */
-    crc = CRC16Update(0, IPC_CRC_SEED_BYTE);
-
-    /* Send the frame length (MSB) */
-    b = (uint8_t)((framelen >> 8) & 0xFF);
-    crc = CRC16Update(crc, b);
-    UART_write(handle, &b, 1);
-
-    /* Send the frame length (LSB) */
-    b = (uint8_t)(framelen & 0xFF);
-    crc = CRC16Update(crc, b);
-    UART_write(handle, &b, 1);
-
-    /* Send the frame type & flags byte */
-    b = (uint8_t)(fcb->type & 0xFF);
-    crc = CRC16Update(crc, b);
-    UART_write(handle, &b, 1);
-
-    /* Sending ACK or NAK only frame? */
-
-    if ((type == IPC_ACK_ONLY) || (type == IPC_NAK_ONLY))
-    {
-        /* Sending ACK/NAK frame only  */
-
-        b = (uint8_t)(fcb->acknak & 0xFF);
-        crc = CRC16Update(crc, b);
-        UART_write(handle, &b, 1);
-    }
-    else
-    {
-        /* Continue sending a full IPC frame */
-
-        /* Send the Frame Sequence Number */
-        b = (uint8_t)(fcb->seqnum & 0xFF);
-        crc = CRC16Update(crc, b);
-        UART_write(handle, &b, 1);
-
-        /* Send the ACK/NAK Sequence Number */
-        b = (uint8_t)(fcb->acknak & 0xFF);
-        crc = CRC16Update(crc, b);
-        UART_write(handle, &b, 1);
-
-        /* Send the Text length (MSB) */
-        b = (uint8_t)((textlen >> 8) & 0xFF);
-        crc = CRC16Update(crc, b);
-        UART_write(handle, &b, 1);
-
-        /* Send the Text length (LSB) */
-        b = (uint8_t)(textlen & 0xFF);
-        crc = CRC16Update(crc, b);
-        UART_write(handle, &b, 1);
-
-        /* Send any text data associated with the frame */
-
-        if (textbuf && textlen)
-        {
-            for (i=0; i < textlen; i++)
-            {
-                b = *textbuf++;
-                crc = CRC16Update(crc, b);
-                UART_write(handle, &b, 1);
-            }
-        }
-    }
-
-    /* Send the CRC MSB */
-    b = (uint8_t)(crc >> 8);
-    UART_write(handle, &b, 1);
-
-    /* Send the CRC LSB */
-    b = (uint8_t)(crc & 0xFF);
-    UART_write(handle, &b, 1);
-
-    return IPC_ERR_SUCCESS;
 }
 
 //*****************************************************************************
 // Receive an IPC frame from the serial port
 //*****************************************************************************
 
-int IPC_RxFrame(UART_Handle handle, IPC_FCB* fcb, void* txtbuf, uint16_t txtlen)
+int IPC_RxFrame(UART_Handle handle, IPC_FCB* fcb)
 {
     int i;
     int rc = IPC_ERR_SUCCESS;
@@ -247,8 +127,10 @@ int IPC_RxFrame(UART_Handle handle, IPC_FCB* fcb, void* txtbuf, uint16_t txtlen)
     uint16_t rxcrc;
     uint16_t crc = 0;
 
-    uint8_t *textbuf = (uint8_t*)txtbuf;
-    uint16_t textlen = (uint16_t)txtlen;
+    uint8_t *textbuf = (uint8_t*)fcb->rxbuf;
+    uint16_t textlen = (uint16_t)fcb->rxbufsize;    /* max rx buffer size */
+
+    fcb->rxlen = 0;
 
     /* First, try to synchronize to 0x79 SOF byte */
 
@@ -361,6 +243,9 @@ int IPC_RxFrame(UART_Handle handle, IPC_FCB* fcb, void* txtbuf, uint16_t txtlen)
         /* Get the frame length received and validate it */
         uint16_t rxtextlen = (size_t)((msb << 8) | lsb) & 0xFFFF;
 
+        /* Return the message text length */
+        fcb->rxlen = rxtextlen;
+
         /* The text length should be the frame overhead minus the preamble overhead
          * plus the text length specified in the received frame. If these don't match
          * then we have either a packet data error or a malformed packet.
@@ -412,6 +297,139 @@ int IPC_RxFrame(UART_Handle handle, IPC_FCB* fcb, void* txtbuf, uint16_t txtlen)
         rc = IPC_ERR_CRC;
 
     return rc;
+}
+
+//*****************************************************************************
+// Transmit an IPC frame of data out the serial port
+//*****************************************************************************
+
+int IPC_TxFrame(UART_Handle handle, IPC_FCB* fcb)
+{
+    uint8_t b;
+    uint8_t type;
+    uint16_t i;
+    uint16_t framelen;
+    uint16_t crc;
+
+    uint8_t *textbuf = (uint8_t*)fcb->txbuf;
+    uint16_t textlen = (uint16_t)fcb->txbufsize;
+
+    fcb->txlen = 0;
+
+    /* First check the text length is valid */
+    if (textlen > IPC_MAX_TEXT_LEN)
+        return IPC_ERR_TEXT_LEN;
+
+    /* Get the frame type less any flag bits */
+    type = (fcb->type & IPC_TYPE_MASK);
+
+    /* Are we sending a ACK or NAK only frame? */
+    if ((type == IPC_ACK_ONLY) || (type == IPC_NAK_ONLY))
+    {
+        textbuf = NULL;
+        textlen = 0;
+
+        framelen = IPC_ACK_FRAME_LEN;
+
+        /* Set the ACK/NAK flag bit */
+        fcb->type |= IPC_F_ACKNAK;
+    }
+    else
+    {
+        /* Build the frame length with text length given */
+        framelen = textlen + (IPC_FRAME_OVERHEAD - IPC_PREAMBLE_OVERHEAD);
+
+        /* If message is piggyback ACK/NAK, set flag bit also */
+        if ((type == IPC_MSG_ACK) || (type == IPC_MSG_NAK))
+            fcb->type |= IPC_F_ACKNAK;
+        else
+            fcb->type &= ~(IPC_F_ACKNAK);
+    }
+
+    /* Send the preamble MSB for the frame start */
+    b = IPC_PREAMBLE_MSB;
+    UART_write(handle, &b, 1);
+
+    /* Send the preamble LSB for the frame start */
+    b = IPC_PREAMBLE_LSB;
+    UART_write(handle, &b, 1);
+
+    /* CRC starts here, sum in the seed byte first */
+    crc = CRC16Update(0, IPC_CRC_SEED_BYTE);
+
+    /* Send the frame length (MSB) */
+    b = (uint8_t)((framelen >> 8) & 0xFF);
+    crc = CRC16Update(crc, b);
+    UART_write(handle, &b, 1);
+
+    /* Send the frame length (LSB) */
+    b = (uint8_t)(framelen & 0xFF);
+    crc = CRC16Update(crc, b);
+    UART_write(handle, &b, 1);
+
+    /* Send the frame type & flags byte */
+    b = (uint8_t)(fcb->type & 0xFF);
+    crc = CRC16Update(crc, b);
+    UART_write(handle, &b, 1);
+
+    /* Sending ACK or NAK only frame? */
+
+    if ((type == IPC_ACK_ONLY) || (type == IPC_NAK_ONLY))
+    {
+        /* Sending ACK/NAK frame only  */
+
+        b = (uint8_t)(fcb->acknak & 0xFF);
+        crc = CRC16Update(crc, b);
+        UART_write(handle, &b, 1);
+    }
+    else
+    {
+        /* Continue sending a full IPC frame */
+
+        /* Send the Frame Sequence Number */
+        b = (uint8_t)(fcb->seqnum & 0xFF);
+        crc = CRC16Update(crc, b);
+        UART_write(handle, &b, 1);
+
+        /* Send the ACK/NAK Sequence Number */
+        b = (uint8_t)(fcb->acknak & 0xFF);
+        crc = CRC16Update(crc, b);
+        UART_write(handle, &b, 1);
+
+        /* Send the Text length (MSB) */
+        b = (uint8_t)((textlen >> 8) & 0xFF);
+        crc = CRC16Update(crc, b);
+        UART_write(handle, &b, 1);
+
+        /* Send the Text length (LSB) */
+        b = (uint8_t)(textlen & 0xFF);
+        crc = CRC16Update(crc, b);
+        UART_write(handle, &b, 1);
+
+        /* Send any text data associated with the frame */
+
+        if (textbuf && textlen)
+        {
+            for (i=0; i < textlen; i++)
+            {
+                b = *textbuf++;
+                crc = CRC16Update(crc, b);
+                UART_write(handle, &b, 1);
+            }
+
+            fcb->txlen = textlen;
+        }
+    }
+
+    /* Send the CRC MSB */
+    b = (uint8_t)(crc >> 8);
+    UART_write(handle, &b, 1);
+
+    /* Send the CRC LSB */
+    b = (uint8_t)(crc & 0xFF);
+    UART_write(handle, &b, 1);
+
+    return IPC_ERR_SUCCESS;
 }
 
 // End-Of-File

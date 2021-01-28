@@ -43,8 +43,8 @@
 #ifndef __UTILS_H__
 #define __UTILS_H__
 
-void SysConfig_init(SYSCONFIG* p);
-int32_t SysConfig_read(SYSCONFIG* sp);
-int32_t SysConfig_write(SYSCONFIG* sp);
+void SysConfig_Init(SYSCONFIG* p);
+int32_t SysConfig_Read(SYSCONFIG* sp);
+int32_t SysConfig_Write(SYSCONFIG* sp);
 
 #endif // __UTILS_H__

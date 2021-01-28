@@ -69,7 +69,7 @@
 
 /*** Track State Constants *************************************************/
 
-#define DCS_MAX_TRACKS      24
+#define DCS_NUM_TRACKS      24
 
 #define DCS_TRACK_REPRO     0x00        /* track is in repro mode     */
 #define DCS_TRACK_SYNC      0x01        /* track is in sync mode      */
@@ -109,7 +109,7 @@ typedef struct _SYSDATA
     MCP23S17_Handle handle_MonMode[3];
     MCP23S17_Handle handle_RecHold[3];
     /* Global Data */
-    uint8_t trackState[DCS_MAX_TRACKS];
+    uint8_t trackState[DCS_NUM_TRACKS];
 } SYSDATA;
 
 /*** Macros & Function Prototypes ******************************************/

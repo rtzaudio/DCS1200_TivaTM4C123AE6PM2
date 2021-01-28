@@ -53,6 +53,8 @@ extern "C" {
 #define Board_spiIoCard2            DCS1200_SPI2		    /* SSI-2 : SPI to I/O Card 2   */
 #define Board_spiIoCard3            DCS1200_SPI3            /* SSI-3 : SPI to I/O Card 3   */
 
+#define Board_uartIPC               DCS1200_UART1
+
 #define Board_Watchdog              DCS1200_WATCHDOG0
 
 #define Board_resetIoExpander       DCS1200_RESET_IOX_N
