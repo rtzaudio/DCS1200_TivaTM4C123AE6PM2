@@ -46,32 +46,32 @@ typedef struct _DCS_IPCMSG_HDR {
 
 /*** SET ALL 24-TRACK STATES ***********************************************/
 
-typedef struct _DCS_IPCMSG_SETALL_TRACKS {
+typedef struct _DCS_IPCMSG_SET_TRACKS {
     DCS_IPCMSG_HDR  hdr;
     uint8_t         trackState[DCS_NUM_TRACKS];
-} DCS_IPCMSG_SETALL_TRACKS;
+} DCS_IPCMSG_SET_TRACKS;
 
 /*** GET ALL 24-TRACK STATES ***********************************************/
 
-typedef struct _DCS_IPCMSG_GETALL_TRACK_STATES {
+typedef struct _DCS_IPCMSG_GET_TRACKS {
     DCS_IPCMSG_HDR  hdr;
     uint8_t         trackState[DCS_NUM_TRACKS];
-} DCS_IPCMSG_GETALL_TRACK_STATES;
+} DCS_IPCMSG_GET_TRACKS;
 
 /*** SET SINGLE TRACK STATE ************************************************/
 
-typedef struct _DCS_IPCMSG_SET_TRACK_STATE {
+typedef struct _DCS_IPCMSG_SET_TRACK {
     DCS_IPCMSG_HDR  hdr;
     uint8_t         trackNum;
     uint8_t         trackState;
-} DCS_IPCMSG_SET_TRACK_STATE;
+} DCS_IPCMSG_SET_TRACK;
 
-/*** SET SINGLE TRACK STATE ************************************************/
+/*** GET SINGLE TRACK STATE ************************************************/
 
-typedef struct _DCS_IPCMSG_GET_TRACK_STATE {
+typedef struct _DCS_IPCMSG_GET_TRACK {
     DCS_IPCMSG_HDR  hdr;
     uint8_t         trackNum;
     uint8_t         trackState;
-} DCS_IPCMSG_GET_TRACK_STATE;
+} DCS_IPCMSG_GET_TRACK;
 
 #endif /* _IPCDCS_H_ */

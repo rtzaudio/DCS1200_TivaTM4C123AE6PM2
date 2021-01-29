@@ -84,20 +84,32 @@
 
 #define RXBUFSIZ    32
 
-/* Global Data Items */
+/*** Global Data Items ***/
+
 SYSCONFIG g_cfg;
 SYSDATA   g_sys;
 
-/* Static Function Prototypes */
+/*** Static Function Prototypes ***/
+
 Int main();
+
 Void MainTask(UArg a0, UArg a1);
 bool Init_Devices(void);
 bool Init_Peripherals(void);
+
 bool WriteRegisterMask(MCP23S17_Handle handle, uint16_t mask);
+
 uint16_t GetMonitorMaskFromTrackState(uint8_t* tracks);
 uint16_t GetRecordHoldMaskFromTrackState(uint8_t* tracks);
+
 void WriteAllMonitorModes(void);
 void WriteAllRecordHoldModes(void);
+
+int HandleNAK(UART_Handle handle, IPC_FCB* fcb);
+int HandleSetTracks(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_SET_TRACKS* msg);
+int HandleGetTracks(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_GET_TRACKS* msg);
+int HandleSetTrack(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_SET_TRACK* msg);
+int HandleGetTrack(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_GET_TRACK* msg);
 
 //*****************************************************************************
 // Main Program Entry Point
@@ -511,31 +523,197 @@ Void MainTask(UArg a0, UArg a1)
         {
             System_printf("ipc rx error %d\n", rc);
             System_flush();
+            continue;
         }
 
-        if (msgLen == DCS_NUM_TRACKS)
+        DCS_IPCMSG_HDR* hdr = (DCS_IPCMSG_HDR*)msgBuf;
+
+        switch(hdr->opcode)
         {
-            /* Copy 24-tracks of the track state data to our global buffer */
-            memcpy(&g_sys.trackState[0], msgBuf, DCS_NUM_TRACKS);
+        case DCS_OP_SET_TRACKS:     /* set all 24-track states */
+            rc = HandleSetTracks(uartHandle, &fcb, (DCS_IPCMSG_SET_TRACKS*)msgBuf);
+            break;
 
-            /* Set all the monitor modes on the channel I/O cards */
-            WriteAllMonitorModes();
+        case DCS_OP_GET_TRACKS:     /* get all 24-track states */
+            rc = HandleGetTracks(uartHandle, &fcb, (DCS_IPCMSG_GET_TRACKS*)msgBuf);
+            break;
 
-            /* Set all record hold modes on the channel I/O cards */
-            WriteAllRecordHoldModes();
+        case DCS_OP_SET_TRACK:      /* set single track state  */
+            rc = HandleSetTrack(uartHandle, &fcb, (DCS_IPCMSG_SET_TRACK*)msgBuf);
+            break;
 
-            /* Transmit an ACK response back to the client */
-            fcb.type = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
+        case DCS_OP_GET_TRACK:      /* get single track state  */
+            rc = HandleGetTrack(uartHandle, &fcb, (DCS_IPCMSG_GET_TRACK*)msgBuf);
+            break;
 
-            rc = IPC_TxFrame(uartHandle, &fcb, NULL, NULL);
+        default:
+            /* Transmit a NAK error response back to the client */
+            rc = HandleNAK(uartHandle, &fcb);
+            break;
+        }
 
-            if (rc != IPC_ERR_SUCCESS)
-            {
-                System_printf("ipc tx error %d\n", rc);
-                System_flush();
-            }
+        if (rc != IPC_ERR_SUCCESS)
+        {
+            System_printf("ipc tx error %d\n", rc);
+            System_flush();
         }
     }
+}
+
+//*****************************************************************************
+//
+//*****************************************************************************
+
+int HandleNAK(
+        UART_Handle handle,
+        IPC_FCB* fcb
+        )
+{
+    int rc;
+
+    /* Transmit a NAK error response back to the client */
+    fcb->acknak = fcb->seqnum;
+    fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK | IPC_F_ERROR, IPC_NAK_ONLY);
+
+    /* Transmit the NAK with error flag bit set */
+    rc = IPC_TxFrame(handle, fcb, NULL, 0);
+
+    return rc;
+}
+
+//*****************************************************************************
+//
+//*****************************************************************************
+
+int HandleSetTracks(
+        UART_Handle handle,
+        IPC_FCB* fcb,
+        DCS_IPCMSG_SET_TRACKS* msg
+        )
+{
+    int rc;
+
+    /* Copy 24-tracks of the track state data to our global buffer */
+    memcpy(g_sys.trackState, &msg->trackState, DCS_NUM_TRACKS);
+
+    /* Set all the monitor modes on the channel I/O cards */
+    WriteAllMonitorModes();
+
+    /* Set all record hold modes on the channel I/O cards */
+    WriteAllRecordHoldModes();
+
+    /* Transmit an ACK response back to the client */
+    fcb->acknak = fcb->seqnum;
+    fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
+
+    rc = IPC_TxFrame(handle, fcb, NULL, 0);
+
+    return rc;
+}
+
+//*****************************************************************************
+//
+//*****************************************************************************
+
+int HandleGetTracks(
+        UART_Handle handle,
+        IPC_FCB* fcb,
+        DCS_IPCMSG_GET_TRACKS* msg
+        )
+{
+    int rc;
+
+    /* Copy 24-tracks of the track state data to tx buffer */
+    memcpy(msg->trackState, g_sys.trackState, DCS_NUM_TRACKS);
+
+    /* Transmit ACK+message response back to the client */
+    fcb->acknak = fcb->seqnum;
+    fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_MSG_ACK);
+
+    rc = IPC_TxFrame(handle, fcb, msg, sizeof(DCS_IPCMSG_GET_TRACKS));
+
+    return rc;
+}
+
+//*****************************************************************************
+//
+//*****************************************************************************
+
+int HandleSetTrack(
+        UART_Handle handle,
+        IPC_FCB* fcb,
+        DCS_IPCMSG_SET_TRACK* msg
+        )
+{
+    int rc;
+
+    size_t index = (size_t)msg->trackNum;
+
+    fcb->acknak = fcb->seqnum;
+
+    if (index >= DCS_NUM_TRACKS)
+    {
+        /* Send NAK only with error bit set */
+        fcb->type = IPC_MAKETYPE(IPC_F_ACKNAK | IPC_F_ERROR, IPC_NAK_ONLY);
+
+        rc = IPC_TxFrame(handle, fcb, NULL, 0);
+    }
+    else
+    {
+        /* Copy track state data to our global buffer */
+        g_sys.trackState[index] = msg->trackState;
+
+        /* Set all the monitor modes on the channel I/O cards */
+        WriteAllMonitorModes();
+
+        /* Set all record hold modes on the channel I/O cards */
+        WriteAllRecordHoldModes();
+
+        /* Transmit an ACK response back to the client */
+
+        fcb->type = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
+
+        rc = IPC_TxFrame(handle, fcb, NULL, 0);
+    }
+
+    return rc;
+}
+
+//*****************************************************************************
+//
+//*****************************************************************************
+
+int HandleGetTrack(
+        UART_Handle handle,
+        IPC_FCB* fcb,
+        DCS_IPCMSG_GET_TRACK* msg
+        )
+{
+    int rc;
+
+    size_t index = (size_t)msg->trackNum;
+
+    fcb->acknak = fcb->seqnum;
+
+    if (index >= DCS_NUM_TRACKS)
+    {
+        /* Send NAK only with error bit set */
+        fcb->type = IPC_MAKETYPE(IPC_F_ACKNAK | IPC_F_ERROR, IPC_NAK_ONLY);
+
+        rc = IPC_TxFrame(handle, fcb, NULL, 0);
+    }
+    else
+    {
+        /* Get track state data from our global buffer */
+        msg->trackState = g_sys.trackState[index];
+
+        /* Transmit ACK+message response back to the client */
+        fcb->type = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_MSG_ACK);
+
+        rc = IPC_TxFrame(handle, fcb, msg, sizeof(DCS_IPCMSG_GET_TRACK));
+    }
+
+    return rc;
 }
 
 /* End-Of-File */
