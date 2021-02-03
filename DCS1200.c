@@ -307,7 +307,7 @@ bool Init_Devices(void)
 }
 
 //*****************************************************************************
-// This functions scans eight channel state words from a track state array
+// This functions scans eight channel state bytes from a track state array
 // and creates a port-A and port-B mask value combined as a 16-bit word.
 // The upper 8-bits contains the port-B register value for the monitor
 // mode and the lower 8-bits contains the port-A register value. This word

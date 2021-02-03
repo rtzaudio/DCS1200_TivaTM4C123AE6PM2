@@ -145,17 +145,18 @@ MCP23S17_Handle MCP23S17_create(
 {
     uint32_t i, initCount;
     MCP23S17_Handle handle;
+    MCP23S17_Object* obj;
     MCP23S17_InitData* initData;
     Error_Block eb;
 
     Error_init(&eb);
 
-    handle = Memory_alloc(NULL, sizeof(MCP23S17_Object), NULL, &eb);
+    obj = Memory_alloc(NULL, sizeof(MCP23S17_Object), NULL, &eb);
 
-    if (handle == NULL)
-        return (NULL);
+    if (obj == NULL)
+        return NULL;
 
-    handle = MCP23S17_construct(handle, spiHandle, gpioCSIndex, params);
+    handle = MCP23S17_construct(obj, spiHandle, gpioCSIndex, params);
 
     if (handle != NULL)
     {
