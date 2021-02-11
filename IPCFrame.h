@@ -1,7 +1,9 @@
 /*
  * IPC - Serial InterProcess Message Protocol
  *
- * Copyright (C) 2016-2021, RTZ Professional Audio, LLC. ALL RIGHTS RESERVED.
+ * Copyright (C) 2016-2021, RTZ Professional Audio, LLC.
+ *
+ * ALL RIGHTS RESERVED.
  *
  * RTZ is registered trademark of RTZ Professional Audio, LLC
  *

@@ -1,6 +1,6 @@
 /* ============================================================================
  *
- * DTC-1200 Digital Transport Controller for Ampex MM-1200 Tape Machines
+ * DCS-1200 Digital Channel Switcher for Ampex MM-1200 Tape Machines
  *
  * Copyright (C) 2016, RTZ Professional Audio, LLC
  * All Rights Reserved
@@ -94,8 +94,9 @@ SYSDATA   g_sys;
 Int main();
 
 Void MainTask(UArg a0, UArg a1);
-bool Init_Devices(void);
+bool Init_Hardware(void);
 bool Init_Peripherals(void);
+bool Init_Devices(void);
 
 bool WriteRegisterMask(MCP23S17_Handle handle, uint16_t mask);
 
@@ -110,6 +111,8 @@ int HandleSetTracks(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_SET_TRACKS* msg
 int HandleGetTracks(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_GET_TRACKS* msg);
 int HandleSetTrack(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_SET_TRACK* msg);
 int HandleGetTrack(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_GET_TRACK* msg);
+int HandleSetRecord(UART_Handle uartHandle, IPC_FCB* fcb, DCS_IPCMSG_SET_RECORD* msg);
+int HandleSetSpeed(UART_Handle uartHandle, IPC_FCB* fcb, DCS_IPCMSG_SET_SPEED* msg);
 
 //*****************************************************************************
 // Main Program Entry Point
@@ -148,6 +151,30 @@ Int main()
 }
 
 //*****************************************************************************
+// Hardware GPIO's and such
+//*****************************************************************************
+
+bool Init_Hardware(void)
+{
+    /* Set status LED on */
+    GPIO_write(Board_ledStatus, Board_LED_ON);
+
+    /* Set speed select relay to high speed */
+    GPIO_write(Board_SpeedSelect, PIN_LOW);
+
+    /* Reset ALL of the MCP23S17 I/O Expanders */
+
+    GPIO_write(Board_resetIoExpanders, PIN_LOW);
+    Task_sleep(100);
+    GPIO_write(Board_resetIoExpanders, PIN_HIGH);
+
+    /* Set status LED off */
+    GPIO_write(Board_ledStatus, Board_LED_OFF);
+
+    return true;
+}
+
+//*****************************************************************************
 // Initialize and open various system peripherals we'll be using
 //*****************************************************************************
 
@@ -155,6 +182,7 @@ bool Init_Peripherals(void)
 {
     SPI_Params  spiParams;
     I2C_Params  i2cParams;
+
 
     /*
      * Open the I2C ports for peripherals we need to communicate with.
@@ -261,15 +289,6 @@ bool Init_Peripherals(void)
 bool Init_Devices(void)
 {
     MCP23S17_Params ioxParams;
-
-    /* Reset ALL of the MCP23S17 I/O Expanders */
-    GPIO_write(Board_ledStatus, Board_LED_ON);
-    GPIO_write(Board_resetIoExpander, PIN_LOW);
-    Task_sleep(100);
-    GPIO_write(Board_ledStatus, Board_LED_OFF);
-    GPIO_write(Board_resetIoExpander, PIN_HIGH);
-    Task_sleep(100);
-    GPIO_write(Board_ledStatus, Board_LED_ON);
 
     /* Create and attach I/O expanders to SPI ports */
 
@@ -459,6 +478,9 @@ Void MainTask(UArg a0, UArg a1)
     memset(&g_cfg, 0, sizeof(SYSCONFIG));
     memset(&g_sys, 0, sizeof(SYSDATA));
 
+    /* Initialize GPIO hardware pins */
+    Init_Hardware();
+
     /* Initialize all the peripherals */
     Init_Peripherals();
 
@@ -514,6 +536,9 @@ Void MainTask(UArg a0, UArg a1)
 
         rc = IPC_RxFrame(uartHandle, &fcb, msgBuf, &msgLen);
 
+        /* Toggle the status LED on each packet timeout or receive */
+        GPIO_toggle(Board_ledStatus);
+
         /* No packet received, loop and continue waiting for a packet */
         if (rc == IPC_ERR_TIMEOUT)
             continue;
@@ -526,6 +551,7 @@ Void MainTask(UArg a0, UArg a1)
             continue;
         }
 
+        /* Get pointer to message header data */
         DCS_IPCMSG_HDR* hdr = (DCS_IPCMSG_HDR*)msgBuf;
 
         switch(hdr->opcode)
@@ -544,6 +570,14 @@ Void MainTask(UArg a0, UArg a1)
 
         case DCS_OP_GET_TRACK:      /* get single track state  */
             rc = HandleGetTrack(uartHandle, &fcb, (DCS_IPCMSG_GET_TRACK*)msgBuf);
+            break;
+
+        case DCS_OP_SET_SPEED:      /* set tape speed hi/lo    */
+            rc = HandleSetSpeed(uartHandle, &fcb, (DCS_IPCMSG_SET_SPEED*)msgBuf);
+            break;
+
+        case DCS_OP_SET_RECORD:     /* set armed tracks rec state  */
+            rc = HandleSetRecord(uartHandle, &fcb, (DCS_IPCMSG_SET_RECORD*)msgBuf);
             break;
 
         default:
@@ -572,8 +606,8 @@ int HandleNAK(
     int rc;
 
     /* Transmit a NAK error response back to the client */
-    fcb->acknak = fcb->seqnum;
     fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK | IPC_F_ERROR, IPC_NAK_ONLY);
+    fcb->acknak = fcb->seqnum;
 
     /* Transmit the NAK with error flag bit set */
     rc = IPC_TxFrame(handle, fcb, NULL, 0);
@@ -603,8 +637,8 @@ int HandleSetTracks(
     WriteAllRecordHoldModes();
 
     /* Transmit an ACK response back to the client */
-    fcb->acknak = fcb->seqnum;
     fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
+    fcb->acknak = fcb->seqnum;
 
     rc = IPC_TxFrame(handle, fcb, NULL, 0);
 
@@ -627,8 +661,8 @@ int HandleGetTracks(
     memcpy(msg->trackState, g_sys.trackState, DCS_NUM_TRACKS);
 
     /* Transmit ACK+message response back to the client */
-    fcb->acknak = fcb->seqnum;
     fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_MSG_ACK);
+    fcb->acknak = fcb->seqnum;
 
     rc = IPC_TxFrame(handle, fcb, msg, sizeof(DCS_IPCMSG_GET_TRACKS));
 
@@ -712,6 +746,67 @@ int HandleGetTrack(
 
         rc = IPC_TxFrame(handle, fcb, msg, sizeof(DCS_IPCMSG_GET_TRACK));
     }
+
+    return rc;
+}
+
+//*****************************************************************************
+//
+//*****************************************************************************
+
+int HandleSetRecord(
+        UART_Handle uartHandle,
+        IPC_FCB* fcb,
+        DCS_IPCMSG_SET_RECORD* msg
+        )
+{
+    int rc;
+
+    /* Get track state data from our global buffer */
+    //msg->trackState = g_sys.trackState[index];
+
+    /* Transmit ACK+message response back to the client */
+    fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
+    fcb->acknak = fcb->seqnum;
+
+    rc = IPC_TxFrame(uartHandle, fcb, msg, sizeof(DCS_IPCMSG_SET_RECORD));
+
+    return rc;
+}
+
+//*****************************************************************************
+//
+//*****************************************************************************
+
+int HandleSetSpeed(
+        UART_Handle uartHandle,
+        IPC_FCB* fcb,
+        DCS_IPCMSG_SET_SPEED* msg
+        )
+{
+    int rc;
+
+    /* Save tape speed in config data */
+    g_sys.tapeSpeed = (msg->tapeSpeed == 30) ? 1 : 0;
+
+    /* Get track state data from our global buffer */
+
+    if (msg->tapeSpeed != 0)
+    {
+        /* Set speed select relay OFF for high speed */
+        GPIO_write(Board_SpeedSelect, PIN_LOW);
+    }
+    else
+    {
+        /* Set speed select relay ON for low speed */
+        GPIO_write(Board_SpeedSelect, PIN_HIGH);
+    }
+
+    /* Transmit ACK+message response back to the client */
+    fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
+    fcb->acknak = fcb->seqnum;
+
+    rc = IPC_TxFrame(uartHandle, fcb, msg, sizeof(DCS_IPCMSG_SET_SPEED));
 
     return rc;
 }

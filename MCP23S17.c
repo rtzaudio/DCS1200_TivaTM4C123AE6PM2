@@ -1,6 +1,6 @@
 /* ============================================================================
  *
- * DCS-1200 Digital Channel Selector for Ampex MM-1200 Tape Machines
+ * DCS-1200 Digital Channel Switcher for Ampex MM-1200 Tape Machines
  *
  * Copyright (C) 2021, RTZ Professional Audio, LLC
  * All Rights Reserved

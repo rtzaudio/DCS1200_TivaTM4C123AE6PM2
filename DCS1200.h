@@ -96,6 +96,7 @@ typedef struct _SYSDATA
     MCP23S17_Handle handle_RecHold[3];
     /* Global Data */
     uint8_t trackState[DCS_NUM_TRACKS];
+    uint8_t tapeSpeed;
 } SYSDATA;
 
 /*** Macros & Function Prototypes ******************************************/

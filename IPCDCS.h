@@ -27,6 +27,8 @@ typedef struct _DCS_IPCMSG_HDR {
 #define DCS_OP_GET_TRACKS       101         /* get all 24-track states     */
 #define DCS_OP_SET_TRACK        102         /* set single track state      */
 #define DCS_OP_GET_TRACK        103         /* get single track state      */
+#define DCS_OP_SET_SPEED        104         /* set tape speed hi/lo        */
+#define DCS_OP_SET_RECORD       105         /* set armed tracks rec state  */
 
 /*** TRACK STATE MODE AND FLAG BITS ****************************************/
 
@@ -73,5 +75,21 @@ typedef struct _DCS_IPCMSG_GET_TRACK {
     uint8_t         trackNum;
     uint8_t         trackState;
 } DCS_IPCMSG_GET_TRACK;
+
+/*** SET TAPE SPEED ********************************************************/
+
+typedef struct _DCS_IPCMSG_SET_SPEED {
+    DCS_IPCMSG_HDR  hdr;
+    uint8_t         tapeSpeed;          /* 0=low, 1=high speed  */
+    uint8_t         rsvd;               /* reserved set to zero */
+} DCS_IPCMSG_SET_SPEED;
+
+/*** SET RECORD STATE ******************************************************/
+
+typedef struct _DCS_IPCMSG_SET_RECORD {
+    DCS_IPCMSG_HDR  hdr;
+    uint8_t         recordState;        /* nonzero = record on  */
+    uint8_t         trackMask;          /* bits indicate tracks */
+} DCS_IPCMSG_SET_RECORD;
 
 #endif /* _IPCDCS_H_ */

@@ -56,8 +56,8 @@ extern "C" {
 #define Board_uartIPC               DCS1200_UART1
 
 #define Board_Watchdog              DCS1200_WATCHDOG0
-
-#define Board_resetIoExpander       DCS1200_RESET_IOX_N
+#define Board_SpeedSelect           DCS1200_SPEED           /* speed select relay */
+#define Board_resetIoExpanders      DCS1200_RESET_IOX_N     /* I/O expander reset bus */
 
 #define Board_Card1_MonMode_SS      DCS1200_SSI1FSS1        /* I/O Card 1 - channels 1-8   */
 #define Board_Card1_RecHold_SS      DCS1200_SSI1FSS2
