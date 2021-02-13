@@ -113,6 +113,7 @@ int HandleSetTrack(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_SET_TRACK* msg);
 int HandleGetTrack(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_GET_TRACK* msg);
 int HandleSetRecord(UART_Handle uartHandle, IPC_FCB* fcb, DCS_IPCMSG_SET_RECORD* msg);
 int HandleSetSpeed(UART_Handle uartHandle, IPC_FCB* fcb, DCS_IPCMSG_SET_SPEED* msg);
+int HandleSetMonitorMode(UART_Handle uartHandle, IPC_FCB* fcb, DCS_IPCMSG_SET_MON_MODE* msg);
 
 //*****************************************************************************
 // Main Program Entry Point
@@ -536,7 +537,7 @@ Void MainTask(UArg a0, UArg a1)
 
         rc = IPC_RxFrame(uartHandle, &fcb, msgBuf, &msgLen);
 
-        /* Toggle the status LED on each packet timeout or receive */
+        /* Toggle the status LED on each packet receive or timeout */
         GPIO_toggle(Board_ledStatus);
 
         /* No packet received, loop and continue waiting for a packet */
@@ -576,8 +577,12 @@ Void MainTask(UArg a0, UArg a1)
             rc = HandleSetSpeed(uartHandle, &fcb, (DCS_IPCMSG_SET_SPEED*)msgBuf);
             break;
 
-        case DCS_OP_SET_RECORD:     /* set armed tracks rec state  */
+        case DCS_OP_SET_RECORD:     /* set armed tracks state  */
             rc = HandleSetRecord(uartHandle, &fcb, (DCS_IPCMSG_SET_RECORD*)msgBuf);
+            break;
+
+        case DCS_OP_SET_MON_MODE:   /* set standby mon mode    */
+            rc = HandleSetMonitorMode(uartHandle, &fcb, (DCS_IPCMSG_SET_MON_MODE*)msgBuf);
             break;
 
         default:
@@ -787,7 +792,7 @@ int HandleSetSpeed(
     int rc;
 
     /* Save tape speed in config data */
-    g_sys.tapeSpeed = (msg->tapeSpeed == 30) ? 1 : 0;
+    g_sys.tapeSpeed = (msg->tapeSpeed != 0) ? 1 : 0;
 
     /* Get track state data from our global buffer */
 
@@ -801,6 +806,30 @@ int HandleSetSpeed(
         /* Set speed select relay ON for low speed */
         GPIO_write(Board_SpeedSelect, PIN_HIGH);
     }
+
+    /* Transmit ACK+message response back to the client */
+    fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
+    fcb->acknak = fcb->seqnum;
+
+    rc = IPC_TxFrame(uartHandle, fcb, msg, sizeof(DCS_IPCMSG_SET_SPEED));
+
+    return rc;
+}
+
+//*****************************************************************************
+//
+//*****************************************************************************
+
+int HandleSetMonitorMode(
+        UART_Handle uartHandle,
+        IPC_FCB* fcb,
+        DCS_IPCMSG_SET_MON_MODE* msg
+        )
+{
+    int rc;
+
+    /* Save tape speed in config data */
+    g_sys.monitorMode = msg->monitorMode;
 
     /* Transmit ACK+message response back to the client */
     fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
