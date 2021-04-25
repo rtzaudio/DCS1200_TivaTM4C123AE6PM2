@@ -164,7 +164,6 @@ bool Init_Hardware(void)
     GPIO_write(Board_SpeedSelect, PIN_LOW);
 
     /* Reset ALL of the MCP23S17 I/O Expanders */
-
     GPIO_write(Board_resetIoExpanders, PIN_LOW);
     Task_sleep(100);
     GPIO_write(Board_resetIoExpanders, PIN_HIGH);
