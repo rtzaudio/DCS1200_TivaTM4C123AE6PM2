@@ -503,6 +503,7 @@ Void MainTask(UArg a0, UArg a1)
     Error_Block eb;
     UART_Params uartParams;
     UART_Handle uartHandle;
+    uint32_t  count = 0;
     //Task_Params taskParams;
 
     /* Initialize the default program data values */
@@ -572,7 +573,40 @@ Void MainTask(UArg a0, UArg a1)
 
         /* No packet received, loop and continue waiting for a packet */
         if (rc == IPC_ERR_TIMEOUT)
+        {
+            /** DEBUG **/
+            ++count;
+
+            switch(count)
+            {
+            case 10:
+                g_sys.trackState[0] = DCS_TRACK_MODE(DCS_TRACK_INPUT);
+                WriteAllMonitorModes();
+                System_printf("ch(0) input\n");
+                System_flush();
+                break;
+
+            case 20:
+                g_sys.trackState[0] = DCS_TRACK_MODE(DCS_TRACK_REPRO);
+                WriteAllMonitorModes();
+                System_printf("ch(0) repro\n");
+                System_flush();
+                break;
+
+            case 30:
+                g_sys.trackState[0] = DCS_TRACK_MODE(DCS_TRACK_SYNC);
+                WriteAllMonitorModes();
+                System_printf("ch(0) sync\n");
+                System_flush();
+                break;
+
+            case 40:
+                count = 0;
+                break;
+            }
+
             continue;
+        }
 
         /* Check for any error attempting to read a packet */
         if (rc != IPC_ERR_SUCCESS)
@@ -871,3 +905,4 @@ int HandleSetMonitorMode(
 }
 
 /* End-Of-File */
+
