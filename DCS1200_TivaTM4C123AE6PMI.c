@@ -279,7 +279,7 @@ uint32_t DCS1200_readDIPSwitch(void)
 {
     uint32_t bits;
     /* Read the four lower bits of the DIP switch and invert */
-    bits = GPIOPinRead(GPIO_PORTG_BASE, 0x0F);
+    bits = GPIOPinRead(GPIO_PORTE_BASE, 0x0F);
     return bits ^ 0x0F;
 }
 
