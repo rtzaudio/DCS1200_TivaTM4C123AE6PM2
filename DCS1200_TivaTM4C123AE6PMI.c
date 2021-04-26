@@ -196,7 +196,7 @@ GPIO_PinConfig gpioPinConfigs[] = {
     // GPIO_PD4 (SSI3FSS2) OUT
     GPIOTiva_PD_4 | GPIO_CFG_OUT_STD | GPIO_CFG_OUT_HIGH,
     // GPIO_PD5 (SPEED) OUT
-    GPIOTiva_PD_5 | GPIO_CFG_OUT_STD | GPIO_CFG_OUT_HIGH,
+    GPIOTiva_PD_5 | GPIO_CFG_OUT_STD | GPIO_CFG_OUT_LOW,
     // GPIO_PD6 (LED_STAT) OUT
     GPIOTiva_PD_6 | GPIO_CFG_OUT_STD | GPIO_CFG_OUT_LOW,
     // GPIO_PD7 (RESET_IOX_N) OUT
@@ -409,7 +409,7 @@ const SPI_Config SPI_config[] = {
     {&SPITivaDMA_fxnTable, &spiTivaDMAObjects[0], &spiTivaDMAHWAttrs[0]},
     {&SPITivaDMA_fxnTable, &spiTivaDMAObjects[1], &spiTivaDMAHWAttrs[1]},
     {&SPITivaDMA_fxnTable, &spiTivaDMAObjects[2], &spiTivaDMAHWAttrs[2]},
-    {&SPITivaDMA_fxnTable, &spiTivaDMAObjects[2], &spiTivaDMAHWAttrs[3]},
+    {&SPITivaDMA_fxnTable, &spiTivaDMAObjects[3], &spiTivaDMAHWAttrs[3]},
     {NULL, NULL, NULL},
 };
 

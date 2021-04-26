@@ -307,7 +307,7 @@ bool Init_Devices(void)
     g_sys.handle_RecHold[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_RecHold_SS, &ioxParams);
 
     /* Setup I/O Card-2 SPI tracks to drive monitor mode and record hold I/O expanders */
-
+#if 0
     MCP23S17_Params_init(&ioxParams);
 
     g_sys.handle_MonMode[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_MonMode_SS, &ioxParams);
@@ -319,7 +319,7 @@ bool Init_Devices(void)
 
     g_sys.handle_MonMode[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_MonMode_SS, &ioxParams);
     g_sys.handle_RecHold[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_RecHold_SS, &ioxParams);
-
+#endif
     System_flush();
 
     return true;
