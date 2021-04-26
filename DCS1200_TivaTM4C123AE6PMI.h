@@ -192,6 +192,8 @@ extern void DCS1200_initGeneral(void);
  */
 extern void DCS1200_initGPIO(void);
 
+extern uint32_t DCS1200_readDIPSwitch(void);
+
 /*!
  *  @brief  Initialize board specific I2C settings
  *

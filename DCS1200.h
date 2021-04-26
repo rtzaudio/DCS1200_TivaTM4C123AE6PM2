@@ -95,6 +95,7 @@ typedef struct _SYSDATA
     MCP23S17_Handle handle_MonMode[3];
     MCP23S17_Handle handle_RecHold[3];
     /* Global Data */
+    uint32_t numTracks;
     uint8_t trackState[DCS_NUM_TRACKS];
     uint8_t tapeSpeed;
     uint8_t monitorMode;

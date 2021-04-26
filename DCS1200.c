@@ -157,6 +157,8 @@ Int main()
 
 bool Init_Hardware(void)
 {
+    uint32_t bits;
+
     /* Set status LED on */
     GPIO_write(Board_ledStatus, Board_LED_ON);
 
@@ -171,8 +173,15 @@ bool Init_Hardware(void)
     /* Set status LED off */
     GPIO_write(Board_ledStatus, Board_LED_OFF);
 
+    /* Read the four lower bits of the DIP switch and invert */
+    bits = Board_readDIPSwitch();
+
+    /* Calculate the number of tracks supported based on DIP switch 1 & 2 */
+    g_sys.numTracks = (bits & 0x03) * 8;
+
     return true;
 }
+
 
 //*****************************************************************************
 // Initialize and open various system peripherals we'll be using
@@ -300,26 +309,30 @@ bool Init_Devices(void)
      */
 
     /* Setup I/O Card-1 SPI tracks to drive monitor mode and record hold I/O expanders */
-
-    MCP23S17_Params_init(&ioxParams);
-
-    g_sys.handle_MonMode[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_MonMode_SS, &ioxParams);
-    g_sys.handle_RecHold[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_RecHold_SS, &ioxParams);
+    if (g_sys.numTracks > 0)
+    {
+        MCP23S17_Params_init(&ioxParams);
+        g_sys.handle_MonMode[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_MonMode_SS, &ioxParams);
+        g_sys.handle_RecHold[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_RecHold_SS, &ioxParams);
+    }
 
     /* Setup I/O Card-2 SPI tracks to drive monitor mode and record hold I/O expanders */
-#if 0
-    MCP23S17_Params_init(&ioxParams);
-
-    g_sys.handle_MonMode[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_MonMode_SS, &ioxParams);
-    g_sys.handle_RecHold[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_RecHold_SS, &ioxParams);
+    if (g_sys.numTracks > 8)
+    {
+        MCP23S17_Params_init(&ioxParams);
+        g_sys.handle_MonMode[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_MonMode_SS, &ioxParams);
+        g_sys.handle_RecHold[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_RecHold_SS, &ioxParams);
+    }
 
     /* Setup I/O Card-3 SPI tracks to drive monitor mode and record hold I/O expanders */
 
-    MCP23S17_Params_init(&ioxParams);
+    if (g_sys.numTracks > 16)
+    {
+        MCP23S17_Params_init(&ioxParams);
+        g_sys.handle_MonMode[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_MonMode_SS, &ioxParams);
+        g_sys.handle_RecHold[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_RecHold_SS, &ioxParams);
+    }
 
-    g_sys.handle_MonMode[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_MonMode_SS, &ioxParams);
-    g_sys.handle_RecHold[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_RecHold_SS, &ioxParams);
-#endif
     System_flush();
 
     return true;
@@ -408,24 +421,33 @@ void WriteAllMonitorModes(void)
 
     /*** Set monitor modes for tracks 1-8 ***/
 
-    /* Read 8-bytes from the track state array and create 16-bit register mask */
-    mask = GetMonitorMaskFromTrackState(&g_sys.trackState[0]);
-    /* Set 16-bits on the I/O expander to configure the monitor modes */
-    WriteRegisterMask(g_sys.handle_MonMode[0], mask);
+    if (g_sys.numTracks > 0)
+    {
+        /* Read 8-bytes from the track state array and create 16-bit register mask */
+        mask = GetMonitorMaskFromTrackState(&g_sys.trackState[0]);
+        /* Set 16-bits on the I/O expander to configure the monitor modes */
+        WriteRegisterMask(g_sys.handle_MonMode[0], mask);
+    }
 
     /*** Set monitor modes for tracks 9-16 ***/
 
-    /* Read 8-bytes from the track state array and create 16-bit register mask */
-    mask = GetMonitorMaskFromTrackState(&g_sys.trackState[8]);
-    /* Set 16-bits on the I/O expander to configure the monitor modes */
-    WriteRegisterMask(g_sys.handle_MonMode[1], mask);
+    if (g_sys.numTracks > 8)
+    {
+        /* Read 8-bytes from the track state array and create 16-bit register mask */
+        mask = GetMonitorMaskFromTrackState(&g_sys.trackState[8]);
+        /* Set 16-bits on the I/O expander to configure the monitor modes */
+        WriteRegisterMask(g_sys.handle_MonMode[1], mask);
+    }
 
     /*** Set monitor modes for tracks 17-24 ***/
 
-    /* Read 8-bytes from the track state array and create 16-bit register mask */
-    mask = GetMonitorMaskFromTrackState(&g_sys.trackState[16]);
-    /* Set 16-bits on the I/O expander to configure the monitor modes */
-    WriteRegisterMask(g_sys.handle_MonMode[2], mask);
+    if (g_sys.numTracks > 16)
+    {
+        /* Read 8-bytes from the track state array and create 16-bit register mask */
+        mask = GetMonitorMaskFromTrackState(&g_sys.trackState[16]);
+        /* Set 16-bits on the I/O expander to configure the monitor modes */
+        WriteRegisterMask(g_sys.handle_MonMode[2], mask);
+    }
 }
 
 //*****************************************************************************
@@ -439,24 +461,33 @@ void WriteAllRecordHoldModes(void)
 
     /*** Set record hold modes for tracks 1-8 ***/
 
-    /* Read 8-bytes from the track state array and create 16-bit register mask */
-    mask = GetRecordHoldMaskFromTrackState(&g_sys.trackState[0]);
-    /* Set 16-bits on the I/O expander to configure the monitor modes */
-    WriteRegisterMask(g_sys.handle_RecHold[0], mask);
+    if (g_sys.numTracks > 0)
+    {
+        /* Read 8-bytes from the track state array and create 16-bit register mask */
+        mask = GetRecordHoldMaskFromTrackState(&g_sys.trackState[0]);
+        /* Set 16-bits on the I/O expander to configure the monitor modes */
+        WriteRegisterMask(g_sys.handle_RecHold[0], mask);
+    }
 
     /*** Set record hold modes for tracks 9-16 ***/
 
-    /* Read 8-bytes from the track state array and create 16-bit register mask */
-    mask = GetRecordHoldMaskFromTrackState(&g_sys.trackState[8]);
-    /* Set 16-bits on the I/O expander to configure the monitor modes */
-    WriteRegisterMask(g_sys.handle_RecHold[1], mask);
+    if (g_sys.numTracks > 8)
+    {
+        /* Read 8-bytes from the track state array and create 16-bit register mask */
+        mask = GetRecordHoldMaskFromTrackState(&g_sys.trackState[8]);
+        /* Set 16-bits on the I/O expander to configure the monitor modes */
+        WriteRegisterMask(g_sys.handle_RecHold[1], mask);
+    }
 
     /*** Set record hold modes for tracks 17-24 ***/
 
-    /* Read 8-bytes from the track state array and create 16-bit register mask */
-    mask = GetRecordHoldMaskFromTrackState(&g_sys.trackState[16]);
-    /* Set 16-bits on the I/O expander to configure the monitor modes */
-    WriteRegisterMask(g_sys.handle_RecHold[2], mask);
+    if (g_sys.numTracks > 16)
+    {
+        /* Read 8-bytes from the track state array and create 16-bit register mask */
+        mask = GetRecordHoldMaskFromTrackState(&g_sys.trackState[16]);
+        /* Set 16-bits on the I/O expander to configure the monitor modes */
+        WriteRegisterMask(g_sys.handle_RecHold[2], mask);
+    }
 }
 
 //*****************************************************************************

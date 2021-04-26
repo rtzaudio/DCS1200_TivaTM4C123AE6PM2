@@ -70,6 +70,8 @@ extern "C" {
 
 #define Board_ledStatus             DCS1200_LED_STAT
 
+#define Board_readDIPSwitch         DCS1200_readDIPSwitch
+
 #define Board_LED_ON                DCS1200_LED_ON
 #define Board_LED_OFF               DCS1200_LED_OFF
 

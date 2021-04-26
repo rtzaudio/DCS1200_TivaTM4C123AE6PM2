@@ -274,6 +274,16 @@ void DCS1200_initGPIO(void)
     GPIO_init();
 }
 
+/* Read lower four-bits of config DIP switch */
+uint32_t DCS1200_readDIPSwitch(void)
+{
+    uint32_t bits;
+    /* Read the four lower bits of the DIP switch and invert */
+    bits = GPIOPinRead(GPIO_PORTG_BASE, 0x0F);
+    return bits ^ 0x0F;
+}
+
+
 /*
  *  =============================== I2C ===============================
  */
