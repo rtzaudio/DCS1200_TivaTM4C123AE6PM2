@@ -579,28 +579,29 @@ Void MainTask(UArg a0, UArg a1)
 
             switch(count)
             {
-            case 10:
+            case 1:
                 g_sys.trackState[0] = DCS_TRACK_MODE(DCS_TRACK_INPUT);
                 WriteAllMonitorModes();
                 System_printf("ch(0) input\n");
                 System_flush();
                 break;
 
-            case 20:
+            case 2:
                 g_sys.trackState[0] = DCS_TRACK_MODE(DCS_TRACK_REPRO);
                 WriteAllMonitorModes();
                 System_printf("ch(0) repro\n");
                 System_flush();
                 break;
 
-            case 30:
+            case 3:
                 g_sys.trackState[0] = DCS_TRACK_MODE(DCS_TRACK_SYNC);
                 WriteAllMonitorModes();
                 System_printf("ch(0) sync\n");
                 System_flush();
                 break;
 
-            case 40:
+            case 4:
+                GPIO_toggle(Board_SpeedSelect);
                 count = 0;
                 break;
             }

@@ -39,7 +39,7 @@ typedef struct _DCS_IPCMSG_HDR {
 #define DCS_TRACK_SYNC          0x01        /* track is in sync mode       */
 #define DCS_TRACK_INPUT         0x02        /* track is in input mode      */
 
-#define DCS_TRACK_MASK          0x02        /* low 2-bits are track mode   */
+#define DCS_TRACK_MASK          0x03        /* low 2-bits are track mode   */
 
 #define DCS_TRACK_MODE(mask)    (mask & DCS_TRACK_MASK)
 
