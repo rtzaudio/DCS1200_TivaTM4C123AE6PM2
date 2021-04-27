@@ -176,7 +176,7 @@ bool Init_Hardware(void)
     /* Read the four lower bits of the DIP switch and invert */
     bits = Board_readDIPSwitch();
 
-    /* Calculate the number of tracks supported based on DIP switch 1 & 2 */
+    /* Number of tracks supported is based on DIP switches 1 & 2 */
     g_sys.numTracks = (bits & 0x03) * 8;
 
     return true;
@@ -376,8 +376,8 @@ uint16_t GetMonitorMaskFromTrackState(uint8_t* tracks)
 // and creates a port-A and port-B mask value combined as a 16-bit word.
 // The upper 8-bits contains the port-B register value for the monitor
 // mode and the lower 8-bits contains the port-A register value. This word
-// specifies the channel state (repro, sync or input) for 8-tracks of
-// an I/O card on the DCS motherboard.
+// specifies the record hold state for 8-tracks of an I/O card on
+// the DCS motherboard.
 //*****************************************************************************
 
 uint16_t GetRecordHoldMaskFromTrackState(uint8_t* tracks)

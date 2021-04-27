@@ -222,7 +222,7 @@ bool MCP23S17_write(
 
 	if (!success)
 	{
-	    System_printf("Unsuccessful SPI transfer to MCP23S17");
+	    System_printf("Unsuccessful SPI transfer to MCP23S17\n");
 	}
 
 	/* Release SPI chip select */
@@ -263,7 +263,7 @@ bool MCP23S17_read(
 
     if (!success)
 	{
-	    System_printf("Unsuccessful SPI transfer to MCP23S17");
+	    System_printf("Unsuccessful SPI transfer to MCP23S17\n");
 	}
 
 	/* Release SPI chip select */
