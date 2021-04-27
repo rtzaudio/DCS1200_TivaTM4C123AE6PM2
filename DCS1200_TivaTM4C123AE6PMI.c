@@ -410,8 +410,8 @@ const SPITivaDMA_HWAttrs spiTivaDMAHWAttrs[DCS1200_SPICOUNT] = {
         .rxChannelIndex         = UDMA_CHANNEL_I2S0RX,
         .txChannelIndex         = UDMA_CHANNEL_I2S0TX,
         .channelMappingFxn      = uDMAChannelAssign,
-        .rxChannelMappingFxnArg = UDMA_CH12_SSI2RX,
-        .txChannelMappingFxnArg = UDMA_CH13_SSI2TX
+        .rxChannelMappingFxnArg = UDMA_CH14_SSI3RX,
+        .txChannelMappingFxnArg = UDMA_CH15_SSI3TX
     }
 };
 
