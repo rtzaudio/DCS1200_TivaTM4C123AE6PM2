@@ -111,9 +111,8 @@ int HandleSetTracks(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_SET_TRACKS* msg
 int HandleGetTracks(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_GET_TRACKS* msg);
 int HandleSetTrack(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_SET_TRACK* msg);
 int HandleGetTrack(UART_Handle handle, IPC_FCB* fcb, DCS_IPCMSG_GET_TRACK* msg);
-int HandleSetRecord(UART_Handle uartHandle, IPC_FCB* fcb, DCS_IPCMSG_SET_RECORD* msg);
 int HandleSetSpeed(UART_Handle uartHandle, IPC_FCB* fcb, DCS_IPCMSG_SET_SPEED* msg);
-int HandleSetMonitorMode(UART_Handle uartHandle, IPC_FCB* fcb, DCS_IPCMSG_SET_MON_MODE* msg);
+int HandleGetNumTracks(UART_Handle uartHandle, IPC_FCB* fcb, DCS_IPCMSG_GET_NUMTRACKS* msg);
 
 //*****************************************************************************
 // Main Program Entry Point
@@ -181,7 +180,6 @@ bool Init_Hardware(void)
 
     return true;
 }
-
 
 //*****************************************************************************
 // Initialize and open various system peripherals we'll be using
@@ -503,8 +501,6 @@ Void MainTask(UArg a0, UArg a1)
     Error_Block eb;
     UART_Params uartParams;
     UART_Handle uartHandle;
-    uint32_t  count = 0;
-    //Task_Params taskParams;
 
     /* Initialize the default program data values */
     memset(&g_cfg, 0, sizeof(SYSCONFIG));
@@ -566,6 +562,7 @@ Void MainTask(UArg a0, UArg a1)
 
         msgLen = RXBUFSIZ;
 
+        /* Attempt to receive an IPC message frame */
         rc = IPC_RxFrame(uartHandle, &fcb, msgBuf, &msgLen);
 
         /* Toggle the status LED on each packet receive or timeout */
@@ -574,38 +571,6 @@ Void MainTask(UArg a0, UArg a1)
         /* No packet received, loop and continue waiting for a packet */
         if (rc == IPC_ERR_TIMEOUT)
         {
-            /** DEBUG **/
-            ++count;
-
-            switch(count)
-            {
-            case 1:
-                g_sys.trackState[0] = DCS_TRACK_MODE(DCS_TRACK_INPUT);
-                WriteAllMonitorModes();
-                System_printf("ch(0) input\n");
-                System_flush();
-                break;
-
-            case 2:
-                g_sys.trackState[0] = DCS_TRACK_MODE(DCS_TRACK_REPRO);
-                WriteAllMonitorModes();
-                System_printf("ch(0) repro\n");
-                System_flush();
-                break;
-
-            case 3:
-                g_sys.trackState[0] = DCS_TRACK_MODE(DCS_TRACK_SYNC);
-                WriteAllMonitorModes();
-                System_printf("ch(0) sync\n");
-                System_flush();
-                break;
-
-            case 4:
-                GPIO_toggle(Board_SpeedSelect);
-                count = 0;
-                break;
-            }
-
             continue;
         }
 
@@ -642,12 +607,8 @@ Void MainTask(UArg a0, UArg a1)
             rc = HandleSetSpeed(uartHandle, &fcb, (DCS_IPCMSG_SET_SPEED*)msgBuf);
             break;
 
-        case DCS_OP_SET_RECORD:     /* set armed tracks state  */
-            rc = HandleSetRecord(uartHandle, &fcb, (DCS_IPCMSG_SET_RECORD*)msgBuf);
-            break;
-
-        case DCS_OP_SET_MON_MODE:   /* set standby mon mode    */
-            rc = HandleSetMonitorMode(uartHandle, &fcb, (DCS_IPCMSG_SET_MON_MODE*)msgBuf);
+        case DCS_OP_GET_NUMTRACKS:  /* get num tracks supported */
+            rc = HandleGetNumTracks(uartHandle, &fcb, (DCS_IPCMSG_GET_NUMTRACKS*)msgBuf);
             break;
 
         default:
@@ -727,14 +688,18 @@ int HandleGetTracks(
 {
     int rc;
 
+    /* Transmit ACK+message response back to the client */
+    fcb->type   = IPC_MAKETYPE(0, IPC_MSG_ACK);
+    fcb->acknak = fcb->seqnum;
+
+    /* Set length of return data */
+    msg->hdr.msglen = sizeof(DCS_IPCMSG_GET_TRACKS);
+
     /* Copy 24-tracks of the track state data to tx buffer */
     memcpy(msg->trackState, g_sys.trackState, DCS_NUM_TRACKS);
 
-    /* Transmit ACK+message response back to the client */
-    fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_MSG_ACK);
-    fcb->acknak = fcb->seqnum;
-
-    rc = IPC_TxFrame(handle, fcb, msg, sizeof(DCS_IPCMSG_GET_TRACKS));
+    /* Transmit the track state data back */
+    rc = IPC_TxFrame(handle, fcb, msg, msg->hdr.msglen);
 
     return rc;
 }
@@ -753,12 +718,11 @@ int HandleSetTrack(
 
     size_t index = (size_t)msg->trackNum;
 
-    fcb->acknak = fcb->seqnum;
-
     if (index >= DCS_NUM_TRACKS)
     {
         /* Send NAK only with error bit set */
-        fcb->type = IPC_MAKETYPE(IPC_F_ACKNAK | IPC_F_ERROR, IPC_NAK_ONLY);
+        fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK | IPC_F_ERROR, IPC_NAK_ONLY);
+        fcb->acknak = fcb->seqnum;
 
         rc = IPC_TxFrame(handle, fcb, NULL, 0);
     }
@@ -775,7 +739,8 @@ int HandleSetTrack(
 
         /* Transmit an ACK response back to the client */
 
-        fcb->type = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
+        fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
+        fcb->acknak = fcb->seqnum;
 
         rc = IPC_TxFrame(handle, fcb, NULL, 0);
     }
@@ -797,49 +762,28 @@ int HandleGetTrack(
 
     size_t index = (size_t)msg->trackNum;
 
-    fcb->acknak = fcb->seqnum;
-
     if (index >= DCS_NUM_TRACKS)
     {
         /* Send NAK only with error bit set */
-        fcb->type = IPC_MAKETYPE(IPC_F_ACKNAK | IPC_F_ERROR, IPC_NAK_ONLY);
+        fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK | IPC_F_ERROR, IPC_NAK_ONLY);
+        fcb->acknak = fcb->seqnum;
 
         rc = IPC_TxFrame(handle, fcb, NULL, 0);
     }
     else
     {
+        /* Transmit ACK+message response back to the client */
+        fcb->type   = IPC_MAKETYPE(0, IPC_MSG_ACK);
+        fcb->acknak = fcb->seqnum;
+
         /* Get track state data from our global buffer */
         msg->trackState = g_sys.trackState[index];
 
-        /* Transmit ACK+message response back to the client */
-        fcb->type = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_MSG_ACK);
+        /* Set length of return data */
+        msg->hdr.msglen = sizeof(DCS_IPCMSG_GET_TRACK);
 
-        rc = IPC_TxFrame(handle, fcb, msg, sizeof(DCS_IPCMSG_GET_TRACK));
+        rc = IPC_TxFrame(handle, fcb, msg, msg->hdr.msglen);
     }
-
-    return rc;
-}
-
-//*****************************************************************************
-//
-//*****************************************************************************
-
-int HandleSetRecord(
-        UART_Handle uartHandle,
-        IPC_FCB* fcb,
-        DCS_IPCMSG_SET_RECORD* msg
-        )
-{
-    int rc;
-
-    /* Get track state data from our global buffer */
-    //msg->trackState = g_sys.trackState[index];
-
-    /* Transmit ACK+message response back to the client */
-    fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
-    fcb->acknak = fcb->seqnum;
-
-    rc = IPC_TxFrame(uartHandle, fcb, msg, sizeof(DCS_IPCMSG_SET_RECORD));
 
     return rc;
 }
@@ -876,7 +820,7 @@ int HandleSetSpeed(
     fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
     fcb->acknak = fcb->seqnum;
 
-    rc = IPC_TxFrame(uartHandle, fcb, msg, sizeof(DCS_IPCMSG_SET_SPEED));
+    rc = IPC_TxFrame(uartHandle, fcb, 0, NULL);
 
     return rc;
 }
@@ -885,22 +829,25 @@ int HandleSetSpeed(
 //
 //*****************************************************************************
 
-int HandleSetMonitorMode(
+int HandleGetNumTracks(
         UART_Handle uartHandle,
         IPC_FCB* fcb,
-        DCS_IPCMSG_SET_MON_MODE* msg
+        DCS_IPCMSG_GET_NUMTRACKS* msg
         )
 {
     int rc;
 
-    /* Save tape speed in config data */
-    g_sys.monitorMode = msg->monitorMode;
-
     /* Transmit ACK+message response back to the client */
-    fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
+    fcb->type   = IPC_MAKETYPE(0, IPC_MSG_ACK);
     fcb->acknak = fcb->seqnum;
 
-    rc = IPC_TxFrame(uartHandle, fcb, msg, sizeof(DCS_IPCMSG_SET_SPEED));
+    /* Get number of tracks configuration */
+    msg->numTracks = (uint8_t)g_sys.numTracks;
+
+    /* Set length of return data */
+    msg->hdr.msglen = sizeof(DCS_IPCMSG_GET_NUMTRACKS);
+
+    rc = IPC_TxFrame(uartHandle, fcb, msg, msg->hdr.msglen);
 
     return rc;
 }

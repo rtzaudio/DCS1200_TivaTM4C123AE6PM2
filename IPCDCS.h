@@ -17,7 +17,7 @@
 
 typedef struct _DCS_IPCMSG_HDR {
     uint16_t    opcode;                     /* the IPC message type code   */
-    uint16_t    msglen;                     /* application defined op code */
+    uint16_t    msglen;                     /* length of hdr & msg data    */
 } DCS_IPCMSG_HDR;
 
 /*** Message OpCode Types **************************************************/
@@ -28,8 +28,7 @@ typedef struct _DCS_IPCMSG_HDR {
 #define DCS_OP_SET_TRACK        102         /* set single track state      */
 #define DCS_OP_GET_TRACK        103         /* get single track state      */
 #define DCS_OP_SET_SPEED        104         /* set tape speed hi/lo        */
-#define DCS_OP_SET_RECORD       105         /* set armed tracks rec state  */
-#define DCS_OP_SET_MON_MODE     106         /* set standby monitor mode    */
+#define DCS_OP_GET_NUMTRACKS    105         /* get num tracks supported    */
 
 /*** TRACK STATE MODE AND FLAG BITS ****************************************/
 
@@ -87,18 +86,9 @@ typedef struct _DCS_IPCMSG_SET_SPEED {
 
 /*** SET RECORD STATE ******************************************************/
 
-typedef struct _DCS_IPCMSG_SET_RECORD {
+typedef struct _DCS_IPCMSG_GET_NUMTRACKS {
     DCS_IPCMSG_HDR  hdr;
-    uint8_t         recordState;        /* nonzero = record on  */
-    uint8_t         trackMask;          /* bits indicate tracks */
-} DCS_IPCMSG_SET_RECORD;
-
-/*** SET STANDBY MONITOR MODE **********************************************/
-
-typedef struct _DCS_IPCMSG_SET_MON_MODE {
-    DCS_IPCMSG_HDR  hdr;
-    uint8_t         monitorMode;        /* nonzero = record on  */
-    uint8_t         rsvd;               /* bits indicate tracks */
-} DCS_IPCMSG_SET_MON_MODE;
+    uint8_t         numTracks;         /* 8, 16 or 24 */
+} DCS_IPCMSG_GET_NUMTRACKS;
 
 #endif /* _IPCDCS_H_ */
