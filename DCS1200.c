@@ -527,7 +527,7 @@ Void MainTask(UArg a0, UArg a1)
 
     uartParams.readMode       = UART_MODE_BLOCKING;
     uartParams.writeMode      = UART_MODE_BLOCKING;
-    uartParams.readTimeout    = 1000;                   // 1 second read timeout
+    uartParams.readTimeout    = 2000;                   // 1 second read timeout
     uartParams.writeTimeout   = BIOS_WAIT_FOREVER;
     uartParams.readCallback   = NULL;
     uartParams.writeCallback  = NULL;
@@ -582,6 +582,9 @@ Void MainTask(UArg a0, UArg a1)
             continue;
         }
 
+        /* Flash LED on each packet received */
+        GPIO_write(Board_ledStatus, PIN_HIGH);
+
         /* Get pointer to message header data */
         DCS_IPCMSG_HDR* hdr = (DCS_IPCMSG_HDR*)msgBuf;
 
@@ -622,6 +625,9 @@ Void MainTask(UArg a0, UArg a1)
             System_printf("ipc tx error %d\n", rc);
             System_flush();
         }
+
+        /* Flash LED on each packet received */
+        GPIO_write(Board_ledStatus, PIN_LOW);
     }
 }
 
@@ -842,7 +848,7 @@ int HandleGetNumTracks(
     fcb->acknak = fcb->seqnum;
 
     /* Get number of tracks configuration */
-    msg->numTracks = (uint8_t)g_sys.numTracks;
+    msg->numTracks = (uint16_t)g_sys.numTracks;
 
     /* Set length of return data */
     msg->hdr.msglen = sizeof(DCS_IPCMSG_GET_NUMTRACKS);

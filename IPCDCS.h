@@ -88,7 +88,7 @@ typedef struct _DCS_IPCMSG_SET_SPEED {
 
 typedef struct _DCS_IPCMSG_GET_NUMTRACKS {
     DCS_IPCMSG_HDR  hdr;
-    uint8_t         numTracks;          /* 8, 16 or 24 */
+    uint16_t        numTracks;          /* 8, 16 or 24 */
 } DCS_IPCMSG_GET_NUMTRACKS;
 
 #endif /* _IPCDCS_H_ */
