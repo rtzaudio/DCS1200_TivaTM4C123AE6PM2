@@ -87,7 +87,7 @@
 /*** Global Data Items ***/
 
 SYSCONFIG g_cfg;
-SYSDATA   g_sys;
+SYSDAT   g_sys;
 
 /*** Static Function Prototypes ***/
 
@@ -504,7 +504,7 @@ Void MainTask(UArg a0, UArg a1)
 
     /* Initialize the default program data values */
     memset(&g_cfg, 0, sizeof(SYSCONFIG));
-    memset(&g_sys, 0, sizeof(SYSDATA));
+    memset(&g_sys, 0, sizeof(SYSDAT));
 
     /* Initialize GPIO hardware pins */
     Init_Hardware();
@@ -535,7 +535,7 @@ Void MainTask(UArg a0, UArg a1)
     uartParams.writeDataMode  = UART_DATA_BINARY;
     uartParams.readDataMode   = UART_DATA_BINARY;
     uartParams.readEcho       = UART_ECHO_OFF;
-    uartParams.baudRate       = 250000;
+    uartParams.baudRate       = 115200;
     uartParams.stopBits       = UART_STOP_ONE;
     uartParams.parityType     = UART_PAR_NONE;
 
@@ -807,11 +807,11 @@ int HandleSetSpeed(
     int rc;
 
     /* Save tape speed in config data */
-    g_sys.tapeSpeed = (msg->tapeSpeed != 0) ? 1 : 0;
+    g_sys.tapeSpeed = (msg->tapeSpeed) ? 1 : 0;
 
     /* Get track state data from our global buffer */
 
-    if (msg->tapeSpeed != 0)
+    if (g_sys.tapeSpeed != 0)
     {
         /* Set speed select relay OFF for high speed */
         GPIO_write(Board_SpeedSelect, PIN_LOW);

@@ -99,7 +99,7 @@ typedef struct _SYSDATA
     uint8_t trackState[DCS_NUM_TRACKS];
     uint8_t tapeSpeed;
     uint8_t monitorMode;
-} SYSDATA;
+} SYSDAT;
 
 /*** Macros & Function Prototypes ******************************************/
 
