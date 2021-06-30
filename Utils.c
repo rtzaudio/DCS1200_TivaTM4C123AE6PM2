@@ -86,7 +86,7 @@
 // Set default runtime values
 //*****************************************************************************
 
-void SysConfig_Init(SYSCONFIG* p)
+void SysConfig_Init(SYSCFG* p)
 {
     /* default servo parameters */
     p->version  = MAKEREV(FIRMWARE_VER, FIRMWARE_REV);
@@ -101,7 +101,7 @@ void SysConfig_Init(SYSCONFIG* p)
 //          -1 = Error writing EEPROM data
 //*****************************************************************************
 
-int32_t SysConfig_Write(SYSCONFIG* sp)
+int32_t SysConfig_Write(SYSCFG* sp)
 {
     int32_t rc = 0;
 
@@ -111,9 +111,9 @@ int32_t SysConfig_Write(SYSCONFIG* sp)
     sp->build   = FIRMWARE_BUILD;
     sp->magic   = MAGIC;
 
-    rc = EEPROMProgram((uint32_t *)sp, uAddress, sizeof(SYSCONFIG));
+    rc = EEPROMProgram((uint32_t *)sp, uAddress, sizeof(SYSCFG));
 
-    System_printf("Writing System Parameters (size=%d)\n", sizeof(SYSCONFIG));
+    System_printf("Writing System Parameters (size=%d)\n", sizeof(SYSCFG));
     System_flush();
 
     return rc;
@@ -127,13 +127,13 @@ int32_t SysConfig_Write(SYSCONFIG* sp)
 //
 //*****************************************************************************
 
-int32_t SysConfig_Read(SYSCONFIG* sp)
+int32_t SysConfig_Read(SYSCFG* sp)
 {
     SysConfig_Init(sp);
 
     uint32_t uAddress = 0;
 
-    EEPROMRead((uint32_t *)sp, uAddress, sizeof(SYSCONFIG));
+    EEPROMRead((uint32_t *)sp, uAddress, sizeof(SYSCFG));
 
     if (sp->magic != MAGIC)
     {
@@ -171,7 +171,7 @@ int32_t SysConfig_Read(SYSCONFIG* sp)
         return -1;
     }
 
-    System_printf("System Config Loaded (size=%d)\n", sizeof(SYSCONFIG));
+    System_printf("System Config Loaded (size=%d)\n", sizeof(SYSCFG));
     System_flush();
 
     return 0;

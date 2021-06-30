@@ -86,8 +86,8 @@
 
 /*** Global Data Items ***/
 
-SYSCONFIG g_cfg;
-SYSDAT   g_sys;
+SYSCFG g_cfg;
+SYSDAT g_sys;
 
 /*** Static Function Prototypes ***/
 
@@ -100,6 +100,7 @@ bool Init_Devices(void);
 
 bool WriteRegisterMask(MCP23S17_Handle handle, uint16_t mask);
 
+uint8_t xlateStandby(uint8_t trackState);
 uint16_t GetMonitorMaskFromTrackState(uint8_t* tracks);
 uint16_t GetRecordHoldMaskFromTrackState(uint8_t* tracks);
 
@@ -189,7 +190,6 @@ bool Init_Peripherals(void)
 {
     SPI_Params  spiParams;
     I2C_Params  i2cParams;
-
 
     /*
      * Open the I2C ports for peripherals we need to communicate with.
@@ -337,6 +337,30 @@ bool Init_Devices(void)
 }
 
 //*****************************************************************************
+// This is a helper function takes a track state and checks to see if the
+// flag bits DCS_T_MONITOR and DCS_T_STANDBY are set. If so, this means we
+// want to override the current channel mode and switch the track to input
+// mode instead to handle the standby monitor function.
+//*****************************************************************************
+
+uint8_t xlateStandby(uint8_t trackState)
+{
+    /* If monitor mode enabled and the standby monitor flag is active,
+     * then we want to switch to input mode regardless.
+     */
+    if ((trackState & DCS_T_MONITOR) && (trackState & DCS_T_STANDBY))
+    {
+        /* Mask out the current track mode (sync/repro/input) */
+        trackState &= ~(DCS_MODE_MASK);
+
+        /* Force input mode since standby monitor is active */
+        trackState |= DCS_TRACK_INPUT;
+    };
+
+    return trackState;
+}
+
+//*****************************************************************************
 // This functions scans eight channel state bytes from a track state array
 // and creates a port-A and port-B mask value combined as a 16-bit word.
 // The upper 8-bits contains the port-B register value for the monitor
@@ -352,16 +376,16 @@ uint16_t GetMonitorMaskFromTrackState(uint8_t* tracks)
     uint16_t mask;
 
     /* Monitor mask for port-A on the I/O expander */
-    maskA |= ((tracks[0] & DCS_TRACK_MASK) << 0);
-    maskA |= ((tracks[1] & DCS_TRACK_MASK) << 2);
-    maskA |= ((tracks[2] & DCS_TRACK_MASK) << 4);
-    maskA |= ((tracks[3] & DCS_TRACK_MASK) << 6);
+    maskA |= ((xlateStandby(tracks[0]) & DCS_MODE_MASK) << 0);
+    maskA |= ((xlateStandby(tracks[1]) & DCS_MODE_MASK) << 2);
+    maskA |= ((xlateStandby(tracks[2]) & DCS_MODE_MASK) << 4);
+    maskA |= ((xlateStandby(tracks[3]) & DCS_MODE_MASK) << 6);
 
     /* Monitor mask for port-B on the I/O expander */
-    maskB |= ((tracks[4] & DCS_TRACK_MASK) << 0);
-    maskB |= ((tracks[5] & DCS_TRACK_MASK) << 2);
-    maskB |= ((tracks[6] & DCS_TRACK_MASK) << 4);
-    maskB |= ((tracks[7] & DCS_TRACK_MASK) << 6);
+    maskB |= ((xlateStandby(tracks[4]) & DCS_MODE_MASK) << 0);
+    maskB |= ((xlateStandby(tracks[5]) & DCS_MODE_MASK) << 2);
+    maskB |= ((xlateStandby(tracks[6]) & DCS_MODE_MASK) << 4);
+    maskB |= ((xlateStandby(tracks[7]) & DCS_MODE_MASK) << 6);
 
     /* Combine A-reg and B-reg into 16-bit value */
     mask = (maskB << 8) | (maskA & 0xFF);
@@ -503,7 +527,7 @@ Void MainTask(UArg a0, UArg a1)
     UART_Handle uartHandle;
 
     /* Initialize the default program data values */
-    memset(&g_cfg, 0, sizeof(SYSCONFIG));
+    memset(&g_cfg, 0, sizeof(SYSCFG));
     memset(&g_sys, 0, sizeof(SYSDAT));
 
     /* Initialize GPIO hardware pins */

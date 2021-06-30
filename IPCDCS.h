@@ -38,14 +38,15 @@ typedef struct _DCS_IPCMSG_HDR {
 #define DCS_TRACK_SYNC          0x01        /* track is in sync mode       */
 #define DCS_TRACK_INPUT         0x02        /* track is in input mode      */
 
-#define DCS_TRACK_MASK          0x03        /* low 2-bits are track mode   */
+#define DCS_MODE_MASK           0x03        /* low 2-bits are track mode   */
 
-#define DCS_TRACK_MODE(mask)    (mask & DCS_TRACK_MASK)
+#define DCS_TRACK_MODE(mask)    (mask & DCS_MODE_MASK)
 
 /* Upper bits indicate ready/record state */
-#define DCS_T_MONITOR           0x20        /* track standby monitor mode  */
-#define DCS_T_RECORD            0x40        /* track is recording now      */
-#define DCS_T_READY             0x80        /* track is armed for record   */
+#define DCS_T_STANDBY           0x10        /* standby monitor active flag */
+#define DCS_T_MONITOR           0x20        /* standby monitor enable      */
+#define DCS_T_RECORD            0x40        /* track record active flag    */
+#define DCS_T_READY             0x80        /* track arm/ready for record  */
 
 /*** SET ALL 24-TRACK STATES ***********************************************/
 

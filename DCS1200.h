@@ -75,14 +75,14 @@
  * stored and read from EEPROM. The structure size must be 4 byte aligned.
  */
 
-typedef struct _SYSCONFIG
+typedef struct _SYSCFG
 {
 	uint32_t magic;
 	uint32_t version;
 	uint32_t build;
     /*** GLOBAL PARAMETERS ***/
     int32_t debug;                     	/* debug level */
-} SYSCONFIG;
+} SYSCFG;
 
 /* Global System Data */
 
