@@ -10,15 +10,20 @@
  *
  */
 
-#ifndef _IPCDCS_H_
-#define _IPCDCS_H_
+#ifndef _IPCCMD_DCS1200_H_
+#define _IPCCMD_DCS1200_H_
+
+#include "IPCCMD.h"
 
 /*** DCS IPC Message Header ************************************************/
 
-typedef struct _DCS_IPCMSG_HDR {
-    uint16_t    opcode;                     /* the IPC message type code   */
-    uint16_t    msglen;                     /* length of hdr & msg data    */
-} DCS_IPCMSG_HDR;
+//typedef struct _DCS_IPCMSG_HDR {
+//    uint16_t    opcode;                     /* the IPC message type code   */
+//    uint16_t    msglen;                     /* length of hdr & msg data    */
+//} DCS_IPCMSG_HDR;
+
+/* Define the default message header structure */
+typedef IPCMSG_HDR DCS_IPCMSG_HDR;
 
 /*** Message OpCode Types **************************************************/
 
@@ -93,4 +98,4 @@ typedef struct _DCS_IPCMSG_GET_NUMTRACKS {
     uint16_t        numTracks;          /* 8, 16 or 24 */
 } DCS_IPCMSG_GET_NUMTRACKS;
 
-#endif /* _IPCDCS_H_ */
+#endif /* _IPCCMD_DCS1200_H_ */

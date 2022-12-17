@@ -80,7 +80,6 @@
 #include "MCP23S17.h"
 #include "DCS1200.h"
 #include "Utils.h"
-#include "IPCFrame.h"
 
 #define RXBUFSIZ    32
 
@@ -88,6 +87,8 @@
 
 SYSCFG g_cfg;
 SYSDAT g_sys;
+
+IPCCMD_Handle   g_handleIPC;
 
 /*** Static Function Prototypes ***/
 
@@ -568,6 +569,8 @@ Void MainTask(UArg a0, UArg a1)
     if (uartHandle == NULL)
         System_abort("Error initializing UART\n");
 
+    g_handleIPC = IPCCMD_create(uartHandle, NULL);
+
     /****************************************************************
      * Enter the main application button processing loop forever.
      ****************************************************************/
@@ -582,12 +585,12 @@ Void MainTask(UArg a0, UArg a1)
     for(;;)
     {
         /* Attempt to receive an IPC message packet */
-        IPC_InitFCB(&fcb);
+        IPC_FrameInit(&fcb);
 
         msgLen = RXBUFSIZ;
 
         /* Attempt to receive an IPC message frame */
-        rc = IPC_RxFrame(uartHandle, &fcb, msgBuf, &msgLen);
+        rc = IPC_FrameRx(uartHandle, &fcb, msgBuf, &msgLen);
 
         /* Toggle the status LED on each packet receive or timeout */
         GPIO_toggle(Board_ledStatus);
@@ -671,7 +674,7 @@ int HandleNAK(
     fcb->acknak = fcb->seqnum;
 
     /* Transmit the NAK with error flag bit set */
-    rc = IPC_TxFrame(handle, fcb, NULL, 0);
+    rc = IPC_FrameTx(handle, fcb, NULL, 0);
 
     return rc;
 }
@@ -701,7 +704,7 @@ int HandleSetTracks(
     fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
     fcb->acknak = fcb->seqnum;
 
-    rc = IPC_TxFrame(handle, fcb, NULL, 0);
+    rc = IPC_FrameTx(handle, fcb, NULL, 0);
 
     return rc;
 }
@@ -729,7 +732,7 @@ int HandleGetTracks(
     memcpy(msg->trackState, g_sys.trackState, DCS_NUM_TRACKS);
 
     /* Transmit the track state data back */
-    rc = IPC_TxFrame(handle, fcb, msg, msg->hdr.msglen);
+    rc = IPC_FrameTx(handle, fcb, msg, msg->hdr.msglen);
 
     return rc;
 }
@@ -754,7 +757,7 @@ int HandleSetTrack(
         fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK | IPC_F_ERROR, IPC_NAK_ONLY);
         fcb->acknak = fcb->seqnum;
 
-        rc = IPC_TxFrame(handle, fcb, NULL, 0);
+        rc = IPC_FrameTx(handle, fcb, NULL, 0);
     }
     else
     {
@@ -772,7 +775,7 @@ int HandleSetTrack(
         fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
         fcb->acknak = fcb->seqnum;
 
-        rc = IPC_TxFrame(handle, fcb, NULL, 0);
+        rc = IPC_FrameTx(handle, fcb, NULL, 0);
     }
 
     return rc;
@@ -798,7 +801,7 @@ int HandleGetTrack(
         fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK | IPC_F_ERROR, IPC_NAK_ONLY);
         fcb->acknak = fcb->seqnum;
 
-        rc = IPC_TxFrame(handle, fcb, NULL, 0);
+        rc = IPC_FrameTx(handle, fcb, NULL, 0);
     }
     else
     {
@@ -812,7 +815,7 @@ int HandleGetTrack(
         /* Set length of return data */
         msg->hdr.msglen = sizeof(DCS_IPCMSG_GET_TRACK);
 
-        rc = IPC_TxFrame(handle, fcb, msg, msg->hdr.msglen);
+        rc = IPC_FrameTx(handle, fcb, msg, msg->hdr.msglen);
     }
 
     return rc;
@@ -850,7 +853,7 @@ int HandleSetSpeed(
     fcb->type   = IPC_MAKETYPE(IPC_F_ACKNAK, IPC_ACK_ONLY);
     fcb->acknak = fcb->seqnum;
 
-    rc = IPC_TxFrame(uartHandle, fcb, 0, NULL);
+    rc = IPC_FrameTx(uartHandle, fcb, 0, NULL);
 
     return rc;
 }
@@ -877,7 +880,7 @@ int HandleGetNumTracks(
     /* Set length of return data */
     msg->hdr.msglen = sizeof(DCS_IPCMSG_GET_NUMTRACKS);
 
-    rc = IPC_TxFrame(uartHandle, fcb, msg, msg->hdr.msglen);
+    rc = IPC_FrameTx(uartHandle, fcb, msg, msg->hdr.msglen);
 
     return rc;
 }
