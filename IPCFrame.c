@@ -1,6 +1,6 @@
 /***************************************************************************
  *
- * IPC Low-level Tx/Rx Data Frame Functions
+ * IPC Low-level Tx/Rx Data Frame Functions - v1.01
  *
  * Copyright (C) 2016-2021, RTZ Professional Audio, LLC
  * All Rights Reserved

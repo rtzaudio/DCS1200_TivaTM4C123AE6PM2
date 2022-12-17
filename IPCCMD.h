@@ -1,5 +1,7 @@
 /* ============================================================================
  *
+ * IPC Command Messaging Functions v1.02
+ *
  * Copyright (C) 2022, RTZ Professional Audio, LLC
  * All Rights Reserved
  *
@@ -111,7 +113,9 @@ void IPCCMD_delete(
         IPCCMD_Handle handle
         );
 
-/*** Client Side Functions ***/
+/*****************************************************************************
+ * Client Side Functions
+ *****************************************************************************/
 
 int IPCCMD_Transaction(
         IPCCMD_Handle handle,
@@ -124,7 +128,9 @@ int IPCCMD_Notify(
         IPCMSG_HDR* request
         );
 
-/*** Server Side Functions ***/
+/*****************************************************************************
+ * Server Side Functions
+ *****************************************************************************/
 
 int IPCCMD_ReadMessage(
         IPCCMD_Handle handle,

@@ -1,6 +1,6 @@
 /* ============================================================================
  *
- * IPC Command Messaging Functions
+ * IPC Command Messaging Functions v1.02
  *
  * Copyright (C) 2022, RTZ Professional Audio, LLC
  * All Rights Reserved
@@ -174,6 +174,10 @@ Void IPCCMD_delete(
  *****************************************************************************/
 
 /*****************************************************************************
+ * This function sends a message to a server, but doesn't expect any response
+ * message or ack/nak. Note the caller must set "msglen" the header to
+ * to specify the message size.
+ *
  * request->msglen must be set to specify tx message buffer size!
  *****************************************************************************/
 

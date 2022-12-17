@@ -91,7 +91,7 @@ typedef struct _DCS_IPCMSG_SET_SPEED {
     uint8_t         rsvd;               /* reserved set to zero */
 } DCS_IPCMSG_SET_SPEED;
 
-/*** SET RECORD STATE ******************************************************/
+/*** GET NUMBER OF MACHINE TRACKS ******************************************/
 
 typedef struct _DCS_IPCMSG_GET_NUMTRACKS {
     DCS_IPCMSG_HDR  hdr;
