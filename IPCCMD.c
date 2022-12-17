@@ -174,7 +174,7 @@ Void IPCCMD_delete(
  *****************************************************************************/
 
 /*****************************************************************************
- *
+ * request->msglen must be set to specify tx message buffer size!
  *****************************************************************************/
 
 int IPCCMD_Notify(
@@ -212,7 +212,8 @@ int IPCCMD_Notify(
 }
 
 /*****************************************************************************
- *
+ * request->msglen must be set to specify tx message buffer size!
+ * reply->msglen must be set to specify maximum rx message buffer size!
  *****************************************************************************/
 
 int IPCCMD_Transaction(
@@ -261,10 +262,10 @@ int IPCCMD_Transaction(
  *****************************************************************************/
 
 /*****************************************************************************
- *
+ * reply->msglen must be set to specify maximum rx message buffer size!
  *****************************************************************************/
 
-int IPCCMD_ReadRequest(
+int IPCCMD_ReadMessage(
         IPCCMD_Handle handle,
         IPCMSG_HDR* request
         )
@@ -286,10 +287,10 @@ int IPCCMD_ReadRequest(
 }
 
 /*****************************************************************************
- *
+ * reply->msglen must be set to specify tx message length!
  *****************************************************************************/
 
-int IPCCMD_WriteReply(
+int IPCCMD_WriteMessage(
         IPCCMD_Handle handle,
         IPCMSG_HDR* reply
         )
@@ -300,12 +301,37 @@ int IPCCMD_WriteReply(
     IArg key = GateMutex_enter(GateMutex_handle(&(handle->gate)));
 #endif
 
-    if (reply->msglen > sizeof(IPCMSG_HDR))
-        handle->txFCB.type = IPC_MAKETYPE(0, IPC_MSG_ACK);
-    else
-        handle->txFCB.type = IPC_MAKETYPE(0, IPC_ACK_ONLY);
+    handle->txFCB.type   = IPC_MAKETYPE(0, IPC_MSG_ONLY);
+    handle->txFCB.seqnum = handle->rxFCB.seqnum;
 
+    /* Send IPC command/data to track controller */
+    rc = IPC_FrameTx(handle->uartHandle, &(handle->txFCB), reply, reply->msglen);
+
+#if (IPCCMD_THREAD_SAFE > 0)
+    GateMutex_leave(GateMutex_handle(&(handle->gate)), key);
+#endif
+
+    return rc;
+}
+
+/*****************************************************************************
+ * reply->msglen must be set to specify tx message length!
+ *****************************************************************************/
+
+int IPCCMD_WriteMessageACK(
+        IPCCMD_Handle handle,
+        IPCMSG_HDR* reply
+        )
+{
+    int rc;
+
+#if (IPCCMD_THREAD_SAFE > 0)
+    IArg key = GateMutex_enter(GateMutex_handle(&(handle->gate)));
+#endif
+
+    handle->txFCB.type   = IPC_MAKETYPE(0, IPC_MSG_ACK);
     handle->txFCB.acknak = handle->rxFCB.seqnum;
+    handle->txFCB.seqnum = handle->rxFCB.seqnum;
 
     /* Send IPC command/data to track controller */
     rc = IPC_FrameTx(handle->uartHandle, &(handle->txFCB), reply, reply->msglen);

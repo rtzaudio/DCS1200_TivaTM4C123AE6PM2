@@ -126,12 +126,17 @@ int IPCCMD_Notify(
 
 /*** Server Side Functions ***/
 
-int IPCCMD_ReadRequest(
+int IPCCMD_ReadMessage(
         IPCCMD_Handle handle,
         IPCMSG_HDR* request
         );
 
-int IPCCMD_WriteReply(
+int IPCCMD_WriteMessage(
+        IPCCMD_Handle handle,
+        IPCMSG_HDR* reply
+        );
+
+int IPCCMD_WriteMessageACK(
         IPCCMD_Handle handle,
         IPCMSG_HDR* reply
         );
