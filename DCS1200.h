@@ -40,6 +40,7 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * ============================================================================ */
 
+#include "IPCCMD.h"
 #include "IPCCMD_DCS1200.h"
 
 /*** Global Constants ******************************************************/

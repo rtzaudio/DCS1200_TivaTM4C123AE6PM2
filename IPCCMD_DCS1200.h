@@ -13,8 +13,6 @@
 #ifndef _IPCCMD_DCS1200_H_
 #define _IPCCMD_DCS1200_H_
 
-#include "IPCCMD.h"
-
 /*** DCS IPC Message Header ************************************************/
 
 //typedef struct _DCS_IPCMSG_HDR {
