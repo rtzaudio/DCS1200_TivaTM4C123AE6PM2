@@ -521,6 +521,7 @@ Void MainTask(UArg a0, UArg a1)
     Error_Block eb;
     UART_Params uartParams;
     UART_Handle uartHandle;
+    IPCCMD_Params ipcParams;
     IPCCMD_Handle ipcHandle;
 
 
@@ -566,6 +567,16 @@ Void MainTask(UArg a0, UArg a1)
     if (uartHandle == NULL)
         System_abort("Error initializing UART\n");
 
+    /* Create IPC command object with UART attached */
+
+    IPCCMD_Params_init(&ipcParams);
+    ipcParams.uartHandle = uartHandle;
+
+    ipcHandle = IPCCMD_create(&ipcParams);
+
+    if (ipcHandle == NULL)
+        System_abort("IPCCMD_create() failed");
+
     /****************************************************************
      * Enter the main application button processing loop forever.
      ****************************************************************/
@@ -576,11 +587,6 @@ Void MainTask(UArg a0, UArg a1)
 
     if (msgBuf == NULL)
         System_abort("RxBuf allocation failed");
-
-    ipcHandle = IPCCMD_create(uartHandle, NULL);
-
-    if (ipcHandle == NULL)
-        System_abort("IPCCMD_create() failed");
 
     for(;;)
     {
