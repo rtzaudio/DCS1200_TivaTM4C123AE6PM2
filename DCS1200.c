@@ -596,7 +596,7 @@ Void MainTask(UArg a0, UArg a1)
         /* Specifies the max buffer size our receiver can hold. This gets updated on
          * return and contains the actual number of header and message bytes received.
          */
-        msg->msglen = RXBUFSIZ;
+        msg->length = RXBUFSIZ;
 
         /* Attempt to receive an IPC message */
         rc = IPCCMD_ReadMessage(ipcHandle, msg);
@@ -618,6 +618,10 @@ Void MainTask(UArg a0, UArg a1)
 
         /* Flash LED on each packet received */
         GPIO_write(Board_ledStatus, PIN_HIGH);
+
+        /* reset return error/status fields */
+        msg->error  = 0;
+        msg->status = 0;
 
         /* Dispatch the message by opcode received */
         switch(msg->opcode)
@@ -704,7 +708,7 @@ int HandleGetTracks(
     memcpy(msg->trackState, g_sys.trackState, DCS_NUM_TRACKS);
 
     /* Set length of return data */
-    msg->hdr.msglen = sizeof(DCS_IPCMSG_GET_TRACKS);
+    msg->hdr.length = sizeof(DCS_IPCMSG_GET_TRACKS);
 
     /* Write message plus ACK to client */
     rc = IPCCMD_WriteMessageACK(handle, &msg->hdr);
@@ -772,7 +776,7 @@ int HandleGetTrack(
         msg->trackState = g_sys.trackState[index];
 
         /* Set length of send data */
-        msg->hdr.msglen = sizeof(DCS_IPCMSG_GET_TRACK);
+        msg->hdr.length = sizeof(DCS_IPCMSG_GET_TRACK);
 
         /* Write message plus ACK to client */
         rc = IPCCMD_WriteMessageACK(handle, &msg->hdr);
@@ -829,7 +833,7 @@ int HandleGetNumTracks(
     msg->numTracks = (uint16_t)g_sys.numTracks;
 
     /* Set length of send data */
-    msg->hdr.msglen = sizeof(DCS_IPCMSG_GET_NUMTRACKS);
+    msg->hdr.length = sizeof(DCS_IPCMSG_GET_NUMTRACKS);
 
     /* Write message plus ACK to client */
     rc = IPCCMD_WriteMessageACK(handle, &msg->hdr);
