@@ -104,8 +104,8 @@ typedef enum DCS1200_GPIOName {
     DCS1200_CFG2,                   /* GPIO_PE1 */
     DCS1200_CFG3,                   /* GPIO_PE2 */
     DCS1200_CFG4,                   /* GPIO_PE3 */
-    DCS1200_DOUT1,                  /* GPIO_PG4 */
-    DCS1200_DOUT2,                  /* GPIO_PG5 */
+    DCS1200_RECP_N,                 /* GPIO_PG4 */
+    DCS1200_RECH_N,                 /* GPIO_PG5 */
     DCS1200_SSI2FSS2,               /* GPIO_PB3 */
     DCS1200_SSI2FSS1,               /* GPIO_PB5 */
     DCS1200_SSI3FSS1,               /* GPIO_PD1 */
