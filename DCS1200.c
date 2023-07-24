@@ -194,7 +194,7 @@ Void MainTask(UArg a0, UArg a1)
     int rc;
     uint8_t* msgBuf;
     Error_Block eb;
-//    Task_Params taskParams;
+    Task_Params taskParams;
     UART_Params uartParams;
     UART_Handle uartHandle;
     IPCCMD_Params ipcParams;
@@ -264,13 +264,12 @@ Void MainTask(UArg a0, UArg a1)
      * two signals to handle enabling or disabling any tracks for
      * record during operation.
      */
-#if 0
+
     Error_init(&eb);
     Task_Params_init(&taskParams);
     taskParams.stackSize = 2048;
     taskParams.priority  = 10;
     Task_create((Task_FuncPtr)RecordTaskFxn, &taskParams, &eb);
-#endif
 
     /****************************************************************
      * Enter the main application button processing loop forever.
@@ -853,7 +852,7 @@ void WriteAllRecordModes(void)
     /* Setup time after record hold lines are set */
     Task_sleep(10);
 
-    /*** Assert any RECORD STROBE lines ***/
+    /*** Assert any RECORD STROBE lines to begin strobe pulse ***/
 
     /* channels 01-08 */
     MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOB, (uint8_t)(mask1 >> 8));
@@ -865,7 +864,7 @@ void WriteAllRecordModes(void)
     /* Record pulse low duration! */
     Task_sleep(50);
 
-    /*** Set any RECORD STROBE lines back high ***/
+    /*** Set any RECORD STROBE lines back high non-asserted ***/
 
     /* channels 01-08 */
     MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOB, 0xFF);
