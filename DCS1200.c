@@ -294,6 +294,26 @@ bool Init_Peripherals(void)
 bool Init_Devices(void)
 {
     MCP23S17_Params ioxParams;
+#if 0
+    /* Record Hold MCP23S17 parameters for I/O expander with port-B.
+     * logic inverted. We need to invert all port-B logic as it has
+     * open collector drivers. So, a logic high written to this port
+     * will drive the output low and enable the open-collector output.
+     */
+
+    static MCP23S17_InitData s_initData[] = {
+        { MCP_IOCONA, C_SEQOP },            /* Configure for byte mode */
+        { MCP_IOCONB, C_SEQOP },            /* Configure for byte mode */
+        { MCP_IODIRA, 0x00    },            /* Port A - all outputs */
+        { MCP_IODIRB, 0x00    },            /* Port B - all outputs */
+        { MCP_IOPOLA, 0xFF    }             /* Port A - invert polarity */
+    };
+
+    static MCP23S17_Params s_ioxRecHoldParams = {
+        s_initData,
+        sizeof(s_initData)/sizeof(MCP23S17_InitData)
+    };
+#endif
 
     /* Create and attach I/O expanders to SPI ports */
 
@@ -394,10 +414,14 @@ uint16_t GetMonitorMaskFromTrackState(uint8_t* tracks)
 //*****************************************************************************
 // This functions reads 8 channel state bytes from a track state array
 // and creates a port-A and port-B mask value combined as a 16-bit word.
-// The upper 8-bits contains the port-B register value for the monitor
-// mode and the lower 8-bits contains the port-A register value. This word
-// specifies the record hold state for 8-tracks of an I/O card on
-// the DCS motherboard.
+// The upper 8-bits contains the port-B register value for the unused
+// gpio pins of the second record hold I/O expander. The lower 8-bits
+// contains the port-A register value. This word specifies the record
+// hold state for 8-tracks of an I/O card on the DCS motherboard and
+// is an open collector output. We invert the logic here so DCS_T_READY
+// flag will cause the I/O expander output to logic low to enable
+// the open collector output drivers to the switcher card. This arms
+// the switcher card for record as long as the output is held low.
 //*****************************************************************************
 
 uint16_t GetRecordHoldMaskFromTrackState(uint8_t* tracks)
@@ -413,6 +437,9 @@ uint16_t GetRecordHoldMaskFromTrackState(uint8_t* tracks)
 
         bit <<= 1;
     }
+
+    /* Invert all bits for the record hold mask */
+    mask = !mask;
 
     return mask;
 }
@@ -543,6 +570,12 @@ Void MainTask(UArg a0, UArg a1)
 
     /* Initialize all the hardware devices */
     Init_Devices();
+
+    /* Write initial default modes to set all tracks to repro and
+     * all record hold outputs are disabled.
+     */
+    WriteAllMonitorModes();
+    WriteAllRecordHoldModes();
 
     /* Open the UART for binary mode */
 
