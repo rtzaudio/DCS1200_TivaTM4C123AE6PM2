@@ -117,8 +117,8 @@ bool Init_Devices(void);
 bool WriteRegisterAB(MCP23S17_Handle handle, uint16_t mask);
 
 uint8_t xlateStandby(uint8_t trackState);
-uint16_t GetMonitorMaskFromTrackState(uint8_t* tracks);
-uint16_t GetRecordMaskFromTrackState(uint8_t* tracks);
+uint16_t GetMonCtrlMaskFromTrackState(uint8_t* tracks);
+uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks);
 
 void WriteAllMonitorModes(void);
 void WriteAllRecordModes(void);
@@ -628,7 +628,7 @@ bool Init_Devices(void)
     {
         MCP23S17_Params_init(&ioxParams);
         g_sys.handle_MonMode[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_MonMode_SS, &ioxParams);
-        g_sys.handle_RecCtrl[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_RecHold_SS, &ioxParams);
+        g_sys.handle_RecCtrl[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_RecCtrl_SS, &ioxParams);
         /* DISABLE RECORD ENABLE AND RECORD HOLD LINES! */
         WriteRegisterAB(g_sys.handle_RecCtrl[0], 0xFFFF);
     }
@@ -638,7 +638,7 @@ bool Init_Devices(void)
     {
         MCP23S17_Params_init(&ioxParams);
         g_sys.handle_MonMode[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_MonMode_SS, &ioxParams);
-        g_sys.handle_RecCtrl[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_RecHold_SS, &ioxParams);
+        g_sys.handle_RecCtrl[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_RecCtrl_SS, &ioxParams);
         /* DISABLE RECORD ENABLE AND RECORD HOLD LINES! */
         WriteRegisterAB(g_sys.handle_RecCtrl[1], 0xFFFF);
     }
@@ -649,7 +649,7 @@ bool Init_Devices(void)
     {
         MCP23S17_Params_init(&ioxParams);
         g_sys.handle_MonMode[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_MonMode_SS, &ioxParams);
-        g_sys.handle_RecCtrl[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_RecHold_SS, &ioxParams);
+        g_sys.handle_RecCtrl[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_RecCtrl_SS, &ioxParams);
         /* DISABLE RECORD ENABLE AND RECORD HOLD LINES! */
         WriteRegisterAB(g_sys.handle_RecCtrl[2], 0xFFFF);
     }
@@ -701,7 +701,7 @@ uint8_t xlateStandby(uint8_t trackState)
 // an I/O card on the DCS motherboard.
 //*****************************************************************************
 
-uint16_t GetMonitorMaskFromTrackState(uint8_t* tracks)
+uint16_t GetMonCtrlMaskFromTrackState(uint8_t* tracks)
 {
     uint16_t maskA = 0;
     uint16_t maskB = 0;
@@ -735,7 +735,7 @@ uint16_t GetMonitorMaskFromTrackState(uint8_t* tracks)
 // driving eight channels of record control.
 //*****************************************************************************
 
-uint16_t GetRecordMaskFromTrackState(uint8_t* tracks)
+uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks)
 {
     size_t i;
     uint16_t mask;
@@ -792,7 +792,7 @@ void WriteAllMonitorModes(void)
     if (g_sys.numTracks > 0)
     {
         /* Read 8-bytes from the track state array and create 16-bit register mask */
-        mask = GetMonitorMaskFromTrackState(&g_sys.trackState[0]);
+        mask = GetMonCtrlMaskFromTrackState(&g_sys.trackState[0]);
 
         /* Set 16-bits on the I/O expander to configure the monitor modes */
         WriteRegisterAB(g_sys.handle_MonMode[0], mask);
@@ -803,7 +803,7 @@ void WriteAllMonitorModes(void)
     if (g_sys.numTracks > 8)
     {
         /* Read 8-bytes from the track state array and create 16-bit register mask */
-        mask = GetMonitorMaskFromTrackState(&g_sys.trackState[8]);
+        mask = GetMonCtrlMaskFromTrackState(&g_sys.trackState[8]);
 
         /* Set 16-bits on the I/O expander to configure the monitor modes */
         WriteRegisterAB(g_sys.handle_MonMode[1], mask);
@@ -814,7 +814,7 @@ void WriteAllMonitorModes(void)
     if (g_sys.numTracks > 16)
     {
         /* Read 8-bytes from the track state array and create 16-bit register mask */
-        mask = GetMonitorMaskFromTrackState(&g_sys.trackState[16]);
+        mask = GetMonCtrlMaskFromTrackState(&g_sys.trackState[16]);
 
         /* Set 16-bits on the I/O expander to configure the monitor modes */
         WriteRegisterAB(g_sys.handle_MonMode[2], mask);
@@ -829,25 +829,42 @@ void WriteAllMonitorModes(void)
 
 void WriteAllRecordModes(void)
 {
-    uint16_t mask1;
-    uint16_t mask2;
-    uint16_t mask3;
+    uint16_t mask1 = 0;
+    uint16_t mask2 = 0;
+    uint16_t mask3 = 0;
+
+    /* Must have at least 8 tracks! */
+
+    if (g_sys.numTracks < 8)
+        return;
 
     /* Get record flags for tracks 1-8 */
-    mask1 = !GetRecordMaskFromTrackState(&g_sys.trackState[0]);
-    /* Get record flags for tracks 9-16 */
-    mask2 = !GetRecordMaskFromTrackState(&g_sys.trackState[8]);
-    /* Get record flags for tracks 17-24 */
-    mask3 = !GetRecordMaskFromTrackState(&g_sys.trackState[16]);
+    mask1 = !GetRecCtrlMaskFromTrackState(&g_sys.trackState[0]);
+
+    if (g_sys.numTracks > 8)
+    {
+        /* Get record flags for tracks 9-16 */
+        mask2 = !GetRecCtrlMaskFromTrackState(&g_sys.trackState[8]);
+
+        /* Get record flags for tracks 17-24 */
+        if (g_sys.numTracks > 16)
+            mask3 = !GetRecCtrlMaskFromTrackState(&g_sys.trackState[16]);
+    }
 
     /*** Assert any RECORD HOLD lines (lower 8-bits active low) ***/
 
     /* channels 01-08 */
     MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOA, (uint8_t)(mask1 & 0xFF));
-    /* channels 09-16 */
-    MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOA, (uint8_t)(mask2 & 0xFF));
-    /* channels 17-24 */
-    MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOA, (uint8_t)(mask3 & 0xFF));
+
+    if (g_sys.numTracks > 8)
+    {
+        /* channels 09-16 */
+        MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOA, (uint8_t)(mask2 & 0xFF));
+
+        /* channels 17-24 */
+        if (g_sys.numTracks > 16)
+            MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOA, (uint8_t)(mask3 & 0xFF));
+    }
 
     /* Setup time after record hold lines are set */
     Task_sleep(10);
@@ -856,10 +873,16 @@ void WriteAllRecordModes(void)
 
     /* channels 01-08 */
     MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOB, (uint8_t)(mask1 >> 8));
-    /* channels 09-16 */
-    MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, (uint8_t)(mask2 >> 8));
-    /* channels 17-24 */
-    MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, (uint8_t)(mask3 >> 8));
+
+    if (g_sys.numTracks > 8)
+    {
+        /* channels 09-16 */
+        MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, (uint8_t)(mask2 >> 8));
+
+        /* channels 17-24 */
+        if (g_sys.numTracks > 16)
+            MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, (uint8_t)(mask3 >> 8));
+    }
 
     /* Record pulse low duration! */
     Task_sleep(50);
@@ -868,10 +891,16 @@ void WriteAllRecordModes(void)
 
     /* channels 01-08 */
     MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOB, 0xFF);
-    /* channels 09-16 */
-    MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, 0xFF);
-    /* channels 17-24 */
-    MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, 0xFF);
+
+    if (g_sys.numTracks > 8)
+    {
+        /* channels 09-16 */
+        MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, 0xFF);
+
+        /* channels 17-24 */
+        if (g_sys.numTracks > 16)
+            MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, 0xFF);
+    }
 }
 
 //*****************************************************************************

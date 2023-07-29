@@ -60,13 +60,13 @@ extern "C" {
 #define Board_resetIoExpanders      DCS1200_RESET_IOX_N     /* I/O expander reset bus */
 
 #define Board_Card1_MonMode_SS      DCS1200_SSI1FSS1        /* I/O Card 1 - channels 1-8   */
-#define Board_Card1_RecHold_SS      DCS1200_SSI1FSS2
+#define Board_Card1_RecCtrl_SS      DCS1200_SSI1FSS2
 
 #define Board_Card2_MonMode_SS      DCS1200_SSI2FSS1        /* I/O Card 2 - channels 9-16  */
-#define Board_Card2_RecHold_SS      DCS1200_SSI2FSS2
+#define Board_Card2_RecCtrl_SS      DCS1200_SSI2FSS2
 
 #define Board_Card3_MonMode_SS      DCS1200_SSI3FSS1        /* I/O Card 3 - channels 17-24 */
-#define Board_Card3_RecHold_SS      DCS1200_SSI3FSS2
+#define Board_Card3_RecCtrl_SS      DCS1200_SSI3FSS2
 
 #define Board_Record_Pulse          DCS1200_RECP_N          /* GPIO_PG4 */
 #define Board_Record_Hold           DCS1200_RECH_N          /* GPIO_PG5 */
