@@ -68,6 +68,9 @@ extern "C" {
 #define Board_Card3_MonMode_SS      DCS1200_SSI3FSS1        /* I/O Card 3 - channels 17-24 */
 #define Board_Card3_RecHold_SS      DCS1200_SSI3FSS2
 
+#define Board_Record_Pulse          DCS1200_RECP_N          /* GPIO_PG4 */
+#define Board_Record_Hold           DCS1200_RECH_N          /* GPIO_PG5 */
+
 #define Board_ledStatus             DCS1200_LED_STAT
 
 #define Board_readDIPSwitch         DCS1200_readDIPSwitch

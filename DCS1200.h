@@ -94,7 +94,7 @@ typedef struct _SYSDATA
     SPI_Handle spiSpare;
     SPI_Handle spiIoEx[3];
     MCP23S17_Handle handle_MonMode[3];
-    MCP23S17_Handle handle_RecHold[3];
+    MCP23S17_Handle handle_RecCtrl[3];
     /* Global Data */
     uint32_t numTracks;
     uint8_t trackState[DCS_NUM_TRACKS];
