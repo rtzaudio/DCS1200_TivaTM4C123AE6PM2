@@ -82,6 +82,9 @@ static MCP23S17_InitData initData[] = {
     { MCP_IOCONB, C_SEQOP },            /* Configure for byte mode */
     { MCP_IODIRA, 0x00    },    		/* Port A - all outputs */
     { MCP_IODIRB, 0x00    },			/* Port B - all outputs */
+    { MCP_GPIOA, 0xFF     },            /* Port A - all outputs high */
+    { MCP_GPIOB, 0xFF     },            /* Port B - all outputs high */
+
 };
 
 /* Default MCP23S17 parameters structure */

@@ -131,8 +131,8 @@ int HandleSetSpeed(IPCCMD_Handle handle, DCS_IPCMSG_SET_SPEED* msg);
 int HandleGetNumTracks(IPCCMD_Handle handle, DCS_IPCMSG_GET_NUMTRACKS* msg);
 
 /* hardware interrupt handlers for gpio pins */
-void gpioHwiRecordPulse(unsigned int index);
-void gpioHwiRecordHold(unsigned int index);
+void HwiRecordPulse(unsigned int index);
+void HwiRecordHold(unsigned int index);
 
 //*****************************************************************************
 // Main Program Entry Point
@@ -416,7 +416,7 @@ Void RecordTaskFxn(UArg arg0, UArg arg1)
 // HWI Callback function for record pulse and record hold lines from DTC.
 //*****************************************************************************
 
-void gpioHwiRecordPulse(unsigned int index)
+void HwiRecordPulse(unsigned int index)
 {
     uint32_t mask;
     RecordEventMessage msg;
@@ -442,7 +442,7 @@ void gpioHwiRecordPulse(unsigned int index)
     Mailbox_post(mailboxCommand, &msg, BIOS_NO_WAIT);
  }
 
-void gpioHwiRecordHold(unsigned int index)
+void HwiRecordHold(unsigned int index)
 {
     uint32_t mask;
     RecordEventMessage msg;
@@ -613,7 +613,21 @@ bool Init_Peripherals(void)
 bool Init_Devices(void)
 {
     MCP23S17_Params ioxParams;
+#if 0
+    static MCP23S17_InitData initData[] = {
+        { MCP_IOCONA, C_SEQOP },            /* Configure for byte mode */
+        { MCP_IOCONB, C_SEQOP },            /* Configure for byte mode */
+        { MCP_IODIRA, 0x00    },            /* Port A - all outputs */
+        { MCP_IODIRB, 0x00    },            /* Port B - all outputs */
+    };
 
+    /* MCP23S17 parameters structure */
+
+    static const MCP23S17_Params recParams = {
+        initData,
+        sizeof(initData)/sizeof(MCP23S17_InitData)
+    };
+#endif
     /* Create and attach I/O expanders to SPI ports */
 
     /* Setup the SPI tracks to initialize each I/O expander card on the DCS1200 motherboard.
@@ -657,8 +671,8 @@ bool Init_Devices(void)
     System_flush();
 
     /* Setup the callback Hwi handler for each button */
-    GPIO_setCallback(Board_Record_Pulse, gpioHwiRecordPulse);
-    GPIO_setCallback(Board_Record_Hold, gpioHwiRecordHold);
+    GPIO_setCallback(Board_Record_Pulse, HwiRecordPulse);
+    GPIO_setCallback(Board_Record_Hold, HwiRecordHold);
 
     /* Enable keypad button interrupts */
     GPIO_enableInt(Board_Record_Pulse);
