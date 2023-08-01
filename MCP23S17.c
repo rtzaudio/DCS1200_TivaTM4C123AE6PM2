@@ -78,12 +78,12 @@
 /* Default MCP23S17SO configuration - port A & B all outputs */
 
 static MCP23S17_InitData initData[] = {
-    { MCP_IOCONA, C_SEQOP },			/* Configure for byte mode */
-    { MCP_IOCONB, C_SEQOP },            /* Configure for byte mode */
-    { MCP_IODIRA, 0x00    },    		/* Port A - all outputs */
-    { MCP_IODIRB, 0x00    },			/* Port B - all outputs */
-    { MCP_GPIOA, 0xFF     },            /* Port A - all outputs high */
-    { MCP_GPIOB, 0xFF     },            /* Port B - all outputs high */
+    { MCP_IOCONA, C_SEQOP },			/* Configure for byte mode  */
+    { MCP_IOCONB, C_SEQOP },            /* Configure for byte mode  */
+    { MCP_IODIRA, 0x00    },    		/* Port A - all outputs     */
+    { MCP_IODIRB, 0x00    },			/* Port B - all outputs     */
+    { MCP_GPIOA, 0x00     },            /* Port A - all outputs low */
+    { MCP_GPIOB, 0x00     },            /* Port B - all outputs low */
 
 };
 

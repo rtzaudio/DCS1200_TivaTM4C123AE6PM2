@@ -192,6 +192,7 @@ Int main()
 Void MainTask(UArg a0, UArg a1)
 {
     int rc;
+    size_t i;
     uint8_t* msgBuf;
     Error_Block eb;
     Task_Params taskParams;
@@ -203,6 +204,9 @@ Void MainTask(UArg a0, UArg a1)
     /* Initialize the default program data values */
     memset(&g_cfg, 0, sizeof(SYSCFG));
     memset(&g_sys, 0, sizeof(SYSDAT));
+
+    for (i=0; i < DCS_NUM_TRACKS; i++)
+        g_sys.trackState[i] = DCS_TRACK_MODE(DCS_TRACK_REPRO);
 
     /* Initialize GPIO hardware pins */
     Init_Hardware();
@@ -612,22 +616,40 @@ bool Init_Peripherals(void)
 
 bool Init_Devices(void)
 {
-    MCP23S17_Params ioxParams;
-#if 0
-    static MCP23S17_InitData initData[] = {
-        { MCP_IOCONA, C_SEQOP },            /* Configure for byte mode */
-        { MCP_IOCONB, C_SEQOP },            /* Configure for byte mode */
-        { MCP_IODIRA, 0x00    },            /* Port A - all outputs */
-        { MCP_IODIRB, 0x00    },            /* Port B - all outputs */
+    /* MCP23S17 init parameters for MONITOR control */
+
+    static MCP23S17_InitData initMon[] = {
+        { MCP_IOCONA, C_SEQOP },            /* Configure for byte mode  */
+        { MCP_IOCONB, C_SEQOP },            /* Configure for byte mode  */
+        { MCP_IODIRA, 0x00    },            /* Port A - all outputs     */
+        { MCP_IODIRB, 0x00    },            /* Port B - all outputs     */
+        { MCP_GPIOA, 0x00     },            /* Port A - all outputs LOW */
+        { MCP_GPIOB, 0x00     },            /* Port B - all outputs LOW */
     };
 
-    /* MCP23S17 parameters structure */
+    /* Default MCP23S17 parameters structure */
 
-    static const MCP23S17_Params recParams = {
-        initData,
-        sizeof(initData)/sizeof(MCP23S17_InitData)
+    static MCP23S17_Params monParams = {
+        initMon,
+        sizeof(initMon)/sizeof(MCP23S17_InitData)
     };
-#endif
+
+    /* MCP23S17 init parameters for RECORD control */
+
+    static MCP23S17_InitData initRec[] = {
+        { MCP_IOCONA, C_SEQOP },            /* Configure for byte mode  */
+        { MCP_IOCONB, C_SEQOP },            /* Configure for byte mode  */
+        { MCP_IODIRA, 0x00    },            /* Port A - all outputs     */
+        { MCP_IODIRB, 0x00    },            /* Port B - all outputs     */
+        { MCP_GPIOA,  0xFF    },            /* Port A - all outputs HI  */
+        { MCP_GPIOB,  0xFF    },            /* Port B - all outputs HI  */
+    };
+
+    static MCP23S17_Params recParams = {
+        initRec,
+        sizeof(initRec)/sizeof(MCP23S17_InitData)
+    };
+
     /* Create and attach I/O expanders to SPI ports */
 
     /* Setup the SPI tracks to initialize each I/O expander card on the DCS1200 motherboard.
@@ -640,32 +662,29 @@ bool Init_Devices(void)
     /* Setup I/O Card-1 SPI tracks to drive monitor mode and record hold I/O expanders */
     if (g_sys.numTracks > 0)
     {
-        MCP23S17_Params_init(&ioxParams);
-        g_sys.handle_MonMode[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_MonMode_SS, &ioxParams);
-        g_sys.handle_RecCtrl[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_RecCtrl_SS, &ioxParams);
+        g_sys.handle_MonMode[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_MonMode_SS, &monParams);
+        g_sys.handle_RecCtrl[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_RecCtrl_SS, &recParams);
         /* DISABLE RECORD ENABLE AND RECORD HOLD LINES! */
-        WriteRegisterAB(g_sys.handle_RecCtrl[0], 0xFFFF);
+        //WriteRegisterAB(g_sys.handle_RecCtrl[0], 0xFFFF);
     }
 
     /* Setup I/O Card-2 SPI tracks to drive monitor mode and record hold I/O expanders */
     if (g_sys.numTracks > 8)
     {
-        MCP23S17_Params_init(&ioxParams);
-        g_sys.handle_MonMode[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_MonMode_SS, &ioxParams);
-        g_sys.handle_RecCtrl[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_RecCtrl_SS, &ioxParams);
+        g_sys.handle_MonMode[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_MonMode_SS, &monParams);
+        g_sys.handle_RecCtrl[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_RecCtrl_SS, &recParams);
         /* DISABLE RECORD ENABLE AND RECORD HOLD LINES! */
-        WriteRegisterAB(g_sys.handle_RecCtrl[1], 0xFFFF);
+        //WriteRegisterAB(g_sys.handle_RecCtrl[1], 0xFFFF);
     }
 
     /* Setup I/O Card-3 SPI tracks to drive monitor mode and record hold I/O expanders */
 
     if (g_sys.numTracks > 16)
     {
-        MCP23S17_Params_init(&ioxParams);
-        g_sys.handle_MonMode[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_MonMode_SS, &ioxParams);
-        g_sys.handle_RecCtrl[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_RecCtrl_SS, &ioxParams);
+        g_sys.handle_MonMode[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_MonMode_SS, &monParams);
+        g_sys.handle_RecCtrl[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_RecCtrl_SS, &recParams);
         /* DISABLE RECORD ENABLE AND RECORD HOLD LINES! */
-        WriteRegisterAB(g_sys.handle_RecCtrl[2], 0xFFFF);
+        //WriteRegisterAB(g_sys.handle_RecCtrl[2], 0xFFFF);
     }
 
     System_flush();
