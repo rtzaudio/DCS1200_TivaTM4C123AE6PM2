@@ -173,7 +173,7 @@ Int main()
     Task_Params_init(&taskParams);
 
     taskParams.stackSize = 1248;
-    taskParams.priority  = 13;
+    taskParams.priority  = 10;
 
     if (Task_create(MainTask, &taskParams, &eb) == NULL)
         System_abort("MainTask!\n");
@@ -211,17 +211,17 @@ Void MainTask(UArg a0, UArg a1)
     /* Initialize GPIO hardware pins */
     Init_Hardware();
 
-    /* Initialize all the peripherals */
+    /* Create all the peripheral objects */
     Init_Peripherals();
+
+    /* Initialize all the peripheral devices */
+    Init_Devices();
 
     /* Initialize the default system parameters */
     SysConfig_Init(&g_cfg);
 
     /* Read the system configuration parameters from storage */
     SysConfig_Read(&g_cfg);
-
-    /* Initialize all the hardware devices */
-    Init_Devices();
 
     /* Open the UART for binary mode */
 
@@ -384,35 +384,21 @@ Void RecordTaskFxn(UArg arg0, UArg arg1)
             continue;
         }
 
-        uint32_t index = msg.ui32Index;
-
         switch(msg.eventType)
         {
         case RECORD_HOLD_CHANGE:
-            System_printf("RecordTaskFxn() HOLD %u\n", msg.ui32Mask);
-            System_flush();
+            //System_printf("HOLD %u\n", msg.ui32Mask);
+            //System_flush();
             break;
 
         case RECORD_PULSE_CHANGE:
-            System_printf("RecordTaskFxn() PULSE %u\n", msg.ui32Mask);
-            System_flush();
+            //System_printf("PULSE %u\n", msg.ui32Mask);
+            //System_flush();
             break;
 
         default:
             break;
         }
-
-        /* Debounce after hardware event */
-        Task_sleep(20);
-
-        /* Now wait for the button to release */
-        //while(!(GPIO_read(index)));
-
-        /* Debounce after release */
-        //Task_sleep(10);
-
-        /* Now re-enable button press interrupt again */
-        GPIO_enableInt(index);
     }
 }
 
@@ -433,11 +419,8 @@ void HwiRecordPulse(unsigned int index)
     /* Clear the interrupt first */
     GPIO_clearInt(index);
 
-    /* Disable interrupt for now, the command task will
-     * re-enable this after it processes the button press
-     * message and debounces the button press.
-     */
-    GPIO_disableInt(index);
+    /* Enable the interrupt again so we'll get more */
+    GPIO_enableInt(index);
 
     msg.eventType = RECORD_PULSE_CHANGE;
     msg.ui32Index = index;
@@ -459,11 +442,8 @@ void HwiRecordHold(unsigned int index)
     /* Clear the interrupt first */
     GPIO_clearInt(index);
 
-    /* Disable interrupt for now, the command task will
-     * re-enable this after it processes the button press
-     * message and debounces the button press.
-     */
-    GPIO_disableInt(index);
+    /* Enable the interrupt again so we'll get more */
+    GPIO_enableInt(index);
 
     msg.eventType = RECORD_HOLD_CHANGE;
     msg.ui32Index = index;
@@ -488,7 +468,7 @@ bool Init_Hardware(void)
 
     /* Reset ALL of the MCP23S17 I/O Expanders */
     GPIO_write(Board_resetIoExpanders, PIN_LOW);
-    Task_sleep(100);
+    Task_sleep(10);
     GPIO_write(Board_resetIoExpanders, PIN_HIGH);
 
     /* Set status LED off */
@@ -611,7 +591,7 @@ bool Init_Peripherals(void)
 }
 
 //*****************************************************************************
-// Initialize and open various system peripherals we'll be using
+// Initialize and open I/O expander peripherals we'll be using
 //*****************************************************************************
 
 bool Init_Devices(void)
@@ -660,40 +640,22 @@ bool Init_Devices(void)
      */
 
     /* Setup I/O Card-1 SPI tracks to drive monitor mode and record hold I/O expanders */
-    if (g_sys.numTracks > 0)
-    {
-        g_sys.handle_MonMode[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_MonMode_SS, &monParams);
-        g_sys.handle_RecCtrl[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_RecCtrl_SS, &recParams);
-        /* DISABLE RECORD ENABLE AND RECORD HOLD LINES! */
-        //WriteRegisterAB(g_sys.handle_RecCtrl[0], 0xFFFF);
-    }
+    g_sys.handle_MonMode[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_MonMode_SS, &monParams);
+    g_sys.handle_RecCtrl[0] = MCP23S17_create(g_sys.spiIoEx[0], Board_Card1_RecCtrl_SS, &recParams);
 
     /* Setup I/O Card-2 SPI tracks to drive monitor mode and record hold I/O expanders */
-    if (g_sys.numTracks > 8)
-    {
-        g_sys.handle_MonMode[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_MonMode_SS, &monParams);
-        g_sys.handle_RecCtrl[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_RecCtrl_SS, &recParams);
-        /* DISABLE RECORD ENABLE AND RECORD HOLD LINES! */
-        //WriteRegisterAB(g_sys.handle_RecCtrl[1], 0xFFFF);
-    }
+    g_sys.handle_MonMode[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_MonMode_SS, &monParams);
+    g_sys.handle_RecCtrl[1] = MCP23S17_create(g_sys.spiIoEx[1], Board_Card2_RecCtrl_SS, &recParams);
 
     /* Setup I/O Card-3 SPI tracks to drive monitor mode and record hold I/O expanders */
+    g_sys.handle_MonMode[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_MonMode_SS, &monParams);
+    g_sys.handle_RecCtrl[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_RecCtrl_SS, &recParams);
 
-    if (g_sys.numTracks > 16)
-    {
-        g_sys.handle_MonMode[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_MonMode_SS, &monParams);
-        g_sys.handle_RecCtrl[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_RecCtrl_SS, &recParams);
-        /* DISABLE RECORD ENABLE AND RECORD HOLD LINES! */
-        //WriteRegisterAB(g_sys.handle_RecCtrl[2], 0xFFFF);
-    }
-
-    System_flush();
-
-    /* Setup the callback Hwi handler for each button */
+    /* Setup the callback GPIO hardware interrupt handlers */
     GPIO_setCallback(Board_Record_Pulse, HwiRecordPulse);
     GPIO_setCallback(Board_Record_Hold, HwiRecordHold);
 
-    /* Enable keypad button interrupts */
+    /* Enable GPIO record hold and record pulse pin interrupts */
     GPIO_enableInt(Board_Record_Pulse);
     GPIO_enableInt(Board_Record_Hold);
 
@@ -795,6 +757,9 @@ uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks)
     /* Combine A-reg and B-reg into 16-bit value */
     mask = (maskB << 8) | (maskA & 0xFF);
 
+    /* flip all bits to invert logic for open collector output driver */
+    mask = ~mask;
+
     return mask;
 }
 
@@ -872,16 +837,16 @@ void WriteAllRecordModes(void)
         return;
 
     /* Get record flags for tracks 1-8 */
-    mask1 = !GetRecCtrlMaskFromTrackState(&g_sys.trackState[0]);
+    mask1 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[0]);
 
     if (g_sys.numTracks > 8)
     {
         /* Get record flags for tracks 9-16 */
-        mask2 = !GetRecCtrlMaskFromTrackState(&g_sys.trackState[8]);
+        mask2 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[8]);
 
         /* Get record flags for tracks 17-24 */
         if (g_sys.numTracks > 16)
-            mask3 = !GetRecCtrlMaskFromTrackState(&g_sys.trackState[16]);
+            mask3 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[16]);
     }
 
     /*** Assert any RECORD HOLD lines (lower 8-bits active low) ***/
