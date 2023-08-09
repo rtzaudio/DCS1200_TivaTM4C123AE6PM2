@@ -43,6 +43,11 @@
 #ifndef _MCP23S17_H_
 #define _MCP23S17_H_
 
+/* Set to one for thread safe use */
+#ifndef MCP_THREAD_SAFE
+#define MCP_THREAD_SAFE  1
+#endif
+
 /*****************************************************************************
  * MCP23017 Register Addresses (IOCON.BANK = 0)
  *****************************************************************************/

@@ -184,275 +184,6 @@ Int main()
 }
 
 //*****************************************************************************
-// This is the main task to setup, initialize all communications via UART
-// from the STC host controller. This task simply reads a command and performs
-// any channel data configuration or other commands as requested.
-//*****************************************************************************
-
-Void MainTask(UArg a0, UArg a1)
-{
-    int rc;
-    size_t i;
-    uint8_t* msgBuf;
-    Error_Block eb;
-    Task_Params taskParams;
-    UART_Params uartParams;
-    UART_Handle uartHandle;
-    IPCCMD_Params ipcParams;
-    IPCCMD_Handle ipcHandle;
-
-    /* Initialize the default program data values */
-    memset(&g_cfg, 0, sizeof(SYSCFG));
-    memset(&g_sys, 0, sizeof(SYSDAT));
-
-    for (i=0; i < DCS_NUM_TRACKS; i++)
-        g_sys.trackState[i] = DCS_TRACK_MODE(DCS_TRACK_REPRO);
-
-    /* Initialize GPIO hardware pins */
-    Init_Hardware();
-
-    /* Create all the peripheral objects */
-    Init_Peripherals();
-
-    /* Initialize all the peripheral devices */
-    Init_Devices();
-
-    /* Initialize the default system parameters */
-    SysConfig_Init(&g_cfg);
-
-    /* Read the system configuration parameters from storage */
-    SysConfig_Read(&g_cfg);
-
-    /* Open the UART for binary mode */
-
-    UART_Params_init(&uartParams);
-
-    uartParams.readMode       = UART_MODE_BLOCKING;
-    uartParams.writeMode      = UART_MODE_BLOCKING;
-    uartParams.readTimeout    = 2000;                   // 1 second read timeout
-    uartParams.writeTimeout   = BIOS_WAIT_FOREVER;
-    uartParams.readCallback   = NULL;
-    uartParams.writeCallback  = NULL;
-    uartParams.readReturnMode = UART_RETURN_FULL;
-    uartParams.writeDataMode  = UART_DATA_BINARY;
-    uartParams.readDataMode   = UART_DATA_BINARY;
-    uartParams.readEcho       = UART_ECHO_OFF;
-    uartParams.baudRate       = 115200;
-    uartParams.stopBits       = UART_STOP_ONE;
-    uartParams.parityType     = UART_PAR_NONE;
-
-    uartHandle = UART_open(Board_uartIPC, &uartParams);
-
-    if (uartHandle == NULL)
-        System_abort("Error initializing UART\n");
-
-    /* Create IPC command object with UART attached */
-
-    IPCCMD_Params_init(&ipcParams);
-    ipcParams.uartHandle = uartHandle;
-
-    ipcHandle = IPCCMD_create(&ipcParams);
-
-    if (ipcHandle == NULL)
-        System_abort("IPCCMD_create() failed");
-
-    /* Allocate memory for message receive buffer */
-
-    Error_init(&eb);
-    msgBuf = (uint8_t*)Memory_alloc(NULL, RXBUFSIZ, 0, &eb);
-    if (msgBuf == NULL)
-        System_abort("RxBuf allocation failed");
-
-    /* Create the task that monitors the record pulse and record
-     * hold signals from the DTC controller. The DTC drives these
-     * two signals to handle enabling or disabling any tracks for
-     * record during operation.
-     */
-
-    Error_init(&eb);
-    Task_Params_init(&taskParams);
-    taskParams.stackSize = 2048;
-    taskParams.priority  = 10;
-    Task_create((Task_FuncPtr)RecordTaskFxn, &taskParams, &eb);
-
-    /****************************************************************
-     * Enter the main application button processing loop forever.
-     ****************************************************************/
-
-    for(;;)
-    {
-        /* Get pointer to header plus message receive buffer */
-        DCS_IPCMSG_HDR* msg = (DCS_IPCMSG_HDR*)msgBuf;
-
-        /* Specifies the max buffer size our receiver can hold. This gets updated on
-         * return and contains the actual number of header and message bytes received.
-         */
-        msg->length = RXBUFSIZ;
-
-        /* Attempt to receive an IPC message */
-        rc = IPCCMD_ReadMessage(ipcHandle, msg);
-
-        /* Toggle the status LED on each packet receive or timeout */
-        GPIO_toggle(Board_ledStatus);
-
-        /* No packet received, loop and continue waiting for a packet */
-        if (rc == IPC_ERR_TIMEOUT)
-            continue;
-
-        /* Check for any error attempting to read a packet */
-        if (rc != IPC_ERR_SUCCESS)
-        {
-            System_printf("IPCCMD_ReadMessage() error %d\n", rc);
-            System_flush();
-            continue;
-        }
-
-        /* Flash LED on each packet received */
-        GPIO_write(Board_ledStatus, PIN_HIGH);
-
-        /* reset return error/status fields */
-        msg->error  = 0;
-        msg->status = 0;
-
-        /* Dispatch the message by opcode received */
-        switch(msg->opcode)
-        {
-        case DCS_OP_SET_TRACKS:     /* set all 24-track states */
-            rc = HandleSetTracks(ipcHandle, (DCS_IPCMSG_SET_TRACKS*)msgBuf);
-            break;
-
-        case DCS_OP_GET_TRACKS:     /* get all 24-track states */
-            rc = HandleGetTracks(ipcHandle, (DCS_IPCMSG_GET_TRACKS*)msgBuf);
-            break;
-
-        case DCS_OP_SET_TRACK:      /* set single track state  */
-            rc = HandleSetTrack(ipcHandle, (DCS_IPCMSG_SET_TRACK*)msgBuf);
-            break;
-
-        case DCS_OP_GET_TRACK:      /* get single track state  */
-            rc = HandleGetTrack(ipcHandle, (DCS_IPCMSG_GET_TRACK*)msgBuf);
-            break;
-
-        case DCS_OP_SET_SPEED:      /* set tape speed hi/lo    */
-            rc = HandleSetSpeed(ipcHandle, (DCS_IPCMSG_SET_SPEED*)msgBuf);
-            break;
-
-        case DCS_OP_GET_NUMTRACKS:  /* get num tracks supported */
-            rc = HandleGetNumTracks(ipcHandle, (DCS_IPCMSG_GET_NUMTRACKS*)msgBuf);
-            break;
-
-        default:
-            /* Transmit a NAK error response to client */
-            rc = IPCCMD_WriteNAK(ipcHandle);
-            break;
-        }
-
-        if (rc != IPC_ERR_SUCCESS)
-        {
-            System_printf("ipc tx error %d\n", rc);
-            System_flush();
-        }
-
-        /* Flash LED on each packet received */
-        GPIO_write(Board_ledStatus, PIN_LOW);
-    }
-}
-
-//*****************************************************************************
-// This task handles any record enable/disable signal events for all channels.
-// GPIO interrupt events are triggered any time the record hold or record
-// pulse line changes state. The DTC sets the REC_HOLD_N and REC_PULSE_N to
-// signal the user is requesting record mode to be enabled or disabled via
-// the transport record/play control buttons. A switcher card channel will
-// remain in record until the hold line is dropped for that channel. The
-// record pulse line triggers the switcher card to enter record mode.
-//*****************************************************************************
-
-Void RecordTaskFxn(UArg arg0, UArg arg1)
-{
-    RecordEventMessage msg;
-
-    /*
-     * Now begin the main program loop processing button press events
-     */
-
-    while (true)
-    {
-        /* Wait for a message up to 1 second */
-        if (!Mailbox_pend(mailboxCommand, &msg, BIOS_WAIT_FOREVER))
-        {
-            continue;
-        }
-
-        switch(msg.eventType)
-        {
-        case RECORD_HOLD_CHANGE:
-            //System_printf("HOLD %u\n", msg.ui32Mask);
-            //System_flush();
-            break;
-
-        case RECORD_PULSE_CHANGE:
-            //System_printf("PULSE %u\n", msg.ui32Mask);
-            //System_flush();
-            break;
-
-        default:
-            break;
-        }
-    }
-}
-
-//*****************************************************************************
-// HWI Callback function for record pulse and record hold lines from DTC.
-//*****************************************************************************
-
-void HwiRecordPulse(unsigned int index)
-{
-    uint32_t mask;
-    RecordEventMessage msg;
-
-    //Assert_isTrue(index == Board_Record_Pulse);
-
-    /* GPIO pin interrupt occurred, read the state */
-    mask = GPIO_read(index);
-
-    /* Clear the interrupt first */
-    GPIO_clearInt(index);
-
-    /* Enable the interrupt again so we'll get more */
-    GPIO_enableInt(index);
-
-    msg.eventType = RECORD_PULSE_CHANGE;
-    msg.ui32Index = index;
-    msg.ui32Mask  = mask;
-
-    Mailbox_post(mailboxCommand, &msg, BIOS_NO_WAIT);
- }
-
-void HwiRecordHold(unsigned int index)
-{
-    uint32_t mask;
-    RecordEventMessage msg;
-
-    //Assert_isTrue(index == Board_Record_Hold);
-
-    /* GPIO pin interrupt occurred, read the state */
-    mask = GPIO_read(index);
-
-    /* Clear the interrupt first */
-    GPIO_clearInt(index);
-
-    /* Enable the interrupt again so we'll get more */
-    GPIO_enableInt(index);
-
-    msg.eventType = RECORD_HOLD_CHANGE;
-    msg.ui32Index = index;
-    msg.ui32Mask  = mask;
-
-    Mailbox_post(mailboxCommand, &msg, BIOS_NO_WAIT);
-}
-
-//*****************************************************************************
 // Hardware GPIO's and such
 //*****************************************************************************
 
@@ -662,6 +393,424 @@ bool Init_Devices(void)
     return true;
 }
 
+//*****************************************************************************
+// This task handles any record enable/disable signal events for all channels.
+// GPIO interrupt events are triggered any time the record hold or record
+// pulse line changes state. The DTC sets the REC_HOLD_N and REC_PULSE_N to
+// signal the user is requesting record mode to be enabled or disabled via
+// the transport record/play control buttons. A switcher card channel will
+// remain in record until the hold line is dropped for that channel. The
+// record pulse line triggers the switcher card to enter record mode.
+//*****************************************************************************
+
+Void RecordTaskFxn(UArg arg0, UArg arg1)
+{
+    RecordEventMessage msg;
+
+    /*
+     * Now begin the main program loop processing button press events
+     */
+
+    while (true)
+    {
+        /* Wait for a message up to 1 second */
+        if (!Mailbox_pend(mailboxCommand, &msg, BIOS_WAIT_FOREVER))
+        {
+            continue;
+        }
+
+        switch(msg.eventType)
+        {
+        case RECORD_HOLD_CHANGE:
+            //System_printf("HOLD %u\n", msg.ui32Mask);
+            //System_flush();
+            break;
+
+        case RECORD_PULSE_CHANGE:
+            //System_printf("PULSE %u\n", msg.ui32Mask);
+            //System_flush();
+            break;
+
+        default:
+            break;
+        }
+    }
+}
+
+//*****************************************************************************
+// This functions reads 8 channel state bytes from a track state array
+// and creates a port-A and port-B mask value combined as a 16-bit word that
+// contains the record hold and record strobe enable bits for eight channels.
+// The upper 8-bits contains the port-B register value for the record pulse
+// signal and the lower 8-bits contains the port-A register value for the
+// record hold signal. These two bits control the record functions for
+// driving eight channels of record control.
+//*****************************************************************************
+
+uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks)
+{
+    size_t i;
+    uint16_t mask;
+    uint16_t maskA = 0;
+    uint16_t maskB = 0;
+    uint16_t bitA  = 0x01;
+    uint16_t bitB  = 0x01;
+
+    for (i=0; i < 8; i++)
+    {
+        /* Lower byte is record ready state */
+        if (tracks[i] & DCS_T_READY)
+            maskA |= bitA;
+
+        bitA <<= 1;
+
+        /* Upper byte is record active state */
+        if (tracks[i] & DCS_T_RECORD)
+            maskB |= bitB;
+
+        bitB <<= 1;
+    }
+
+    /* Combine A-reg and B-reg into 16-bit value */
+    mask = (maskB << 8) | (maskA & 0xFF);
+
+    /* Invert all bits for open collector output driver logic */
+    mask = ~mask;
+
+    return mask;
+}
+
+//*****************************************************************************
+//
+//*****************************************************************************
+
+void RecordEnable(void)
+{
+    size_t i;
+    uint16_t mask1;
+    uint16_t mask2;
+    uint16_t mask3;
+
+    for (i=0; i < DCS_NUM_TRACKS; i++)
+    {
+        if (g_sys.trackState[i] & DCS_T_READY)
+        {
+            g_sys.recordState[i] |= DCS_T_RECORD;
+        }
+    }
+
+    /* Get record flags for tracks 1-8 */
+    mask1 = GetRecCtrlMaskFromTrackState(&g_sys.recordState[0]);
+    /* Get record flags for tracks 9-16 */
+    mask2 = GetRecCtrlMaskFromTrackState(&g_sys.recordState[8]);
+    /* Get record flags for tracks 17-24 */
+    mask3 = GetRecCtrlMaskFromTrackState(&g_sys.recordState[16]);
+
+    /*** Assert any RECORD HOLD lines (lower 8-bits active low) ***/
+
+    /* channels 01-08 */
+    MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOA, (uint8_t)(mask1 & 0xFF));
+    /* channels 09-16 */
+    MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOA, (uint8_t)(mask2 & 0xFF));
+    /* channels 17-24 */
+    MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOA, (uint8_t)(mask3 & 0xFF));
+
+    /* Setup time after record hold lines are set */
+    Task_sleep(10);
+
+    /*** Assert any RECORD STROBE lines to begin strobe pulse ***/
+
+    /* channels 01-08 */
+    MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOB, (uint8_t)(mask1 >> 8));
+    /* channels 09-16 */
+    MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, (uint8_t)(mask2 >> 8));
+    /* channels 17-24 */
+    MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, (uint8_t)(mask3 >> 8));
+
+    /* Record pulse low duration! */
+    Task_sleep(50);
+
+    /*** Set any RECORD STROBE lines back high non-asserted ***/
+
+    /* channels 01-08 */
+    MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOB, 0xFF);
+    /* channels 09-16 */
+    MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, 0xFF);
+    /* channels 17-24 */
+    MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, 0xFF);
+}
+
+//*****************************************************************************
+//
+//*****************************************************************************
+
+void RecordDisable(void)
+{
+    size_t i;
+    uint16_t mask1;
+    uint16_t mask2;
+    uint16_t mask3;
+
+    /* Clear record active flag in shadow record status memory */
+
+    for (i=0; i < DCS_NUM_TRACKS; i++)
+    {
+        g_sys.recordState[i] &= ~(DCS_T_RECORD);
+    }
+
+    /* Get record flags for tracks 1-8 */
+    mask1 = GetRecCtrlMaskFromTrackState(&g_sys.recordState[0]);
+    /* Get record flags for tracks 9-16 */
+    mask2 = GetRecCtrlMaskFromTrackState(&g_sys.recordState[8]);
+    /* Get record flags for tracks 17-24 */
+    mask3 = GetRecCtrlMaskFromTrackState(&g_sys.recordState[16]);
+
+    /*** Release any RECORD HOLD lines (lower 8-bits active low) ***/
+
+    /* channels 01-08 */
+    MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOA, (uint8_t)(mask1 & 0xFF));
+    /* channels 09-16 */
+    MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOA, (uint8_t)(mask2 & 0xFF));
+    /* channels 17-24 */
+    MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOA, (uint8_t)(mask3 & 0xFF));
+
+    /*** Set any RECORD STROBE lines back high non-asserted ***/
+
+    /* channels 01-08 */
+    MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOB, 0xFF);
+    /* channels 09-16 */
+    MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, 0xFF);
+    /* channels 17-24 */
+    MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, 0xFF);
+}
+
+//*****************************************************************************
+// HWI Callback function for record pulse and record hold lines from DTC.
+//*****************************************************************************
+
+void HwiRecordPulse(unsigned int index)
+{
+    uint32_t mask;
+    RecordEventMessage msg;
+
+    //Assert_isTrue(index == Board_Record_Pulse);
+
+    /* GPIO pin interrupt occurred, read the state */
+    mask = GPIO_read(index);
+
+    /* Clear the interrupt first */
+    GPIO_clearInt(index);
+
+    /* Enable the interrupt again so we'll get more */
+    GPIO_enableInt(index);
+
+    msg.eventType = RECORD_PULSE_CHANGE;
+    msg.ui32Index = index;
+    msg.ui32Mask  = mask;
+
+    Mailbox_post(mailboxCommand, &msg, BIOS_NO_WAIT);
+ }
+
+void HwiRecordHold(unsigned int index)
+{
+    uint32_t mask;
+    RecordEventMessage msg;
+
+    //Assert_isTrue(index == Board_Record_Hold);
+
+    /* GPIO pin interrupt occurred, read the state */
+    mask = GPIO_read(index);
+
+    /* Clear the interrupt first */
+    GPIO_clearInt(index);
+
+    /* Enable the interrupt again so we'll get more */
+    GPIO_enableInt(index);
+
+    msg.eventType = RECORD_HOLD_CHANGE;
+    msg.ui32Index = index;
+    msg.ui32Mask  = mask;
+
+    Mailbox_post(mailboxCommand, &msg, BIOS_NO_WAIT);
+}
+
+//*****************************************************************************
+// This is the main task to setup, initialize all communications via UART
+// from the STC host controller. This task simply reads a command and performs
+// any channel data configuration or other commands as requested.
+//*****************************************************************************
+
+Void MainTask(UArg a0, UArg a1)
+{
+    int rc;
+    size_t i;
+    uint8_t* msgBuf;
+    Error_Block eb;
+    Task_Params taskParams;
+    UART_Params uartParams;
+    UART_Handle uartHandle;
+    IPCCMD_Params ipcParams;
+    IPCCMD_Handle ipcHandle;
+
+    /* Initialize the default program data values */
+    memset(&g_cfg, 0, sizeof(SYSCFG));
+    memset(&g_sys, 0, sizeof(SYSDAT));
+
+    for (i=0; i < DCS_NUM_TRACKS; i++)
+    {
+        g_sys.trackState[i] = DCS_TRACK_MODE(DCS_TRACK_REPRO);
+        g_sys.recordState[i] = g_sys.trackState[i];
+    }
+
+    /* Initialize GPIO hardware pins */
+    Init_Hardware();
+
+    /* Create all the peripheral objects */
+    Init_Peripherals();
+
+    /* Initialize all the peripheral devices */
+    Init_Devices();
+
+    /* Initialize the default system parameters */
+    SysConfig_Init(&g_cfg);
+
+    /* Read the system configuration parameters from storage */
+    SysConfig_Read(&g_cfg);
+
+    /* Open the UART for binary mode */
+
+    UART_Params_init(&uartParams);
+
+    uartParams.readMode       = UART_MODE_BLOCKING;
+    uartParams.writeMode      = UART_MODE_BLOCKING;
+    uartParams.readTimeout    = 2000;                   // 1 second read timeout
+    uartParams.writeTimeout   = BIOS_WAIT_FOREVER;
+    uartParams.readCallback   = NULL;
+    uartParams.writeCallback  = NULL;
+    uartParams.readReturnMode = UART_RETURN_FULL;
+    uartParams.writeDataMode  = UART_DATA_BINARY;
+    uartParams.readDataMode   = UART_DATA_BINARY;
+    uartParams.readEcho       = UART_ECHO_OFF;
+    uartParams.baudRate       = 115200;
+    uartParams.stopBits       = UART_STOP_ONE;
+    uartParams.parityType     = UART_PAR_NONE;
+
+    uartHandle = UART_open(Board_uartIPC, &uartParams);
+
+    if (uartHandle == NULL)
+        System_abort("Error initializing UART\n");
+
+    /* Create IPC command object with UART attached */
+
+    IPCCMD_Params_init(&ipcParams);
+    ipcParams.uartHandle = uartHandle;
+
+    ipcHandle = IPCCMD_create(&ipcParams);
+
+    if (ipcHandle == NULL)
+        System_abort("IPCCMD_create() failed");
+
+    /* Allocate memory for message receive buffer */
+
+    Error_init(&eb);
+    msgBuf = (uint8_t*)Memory_alloc(NULL, RXBUFSIZ, 0, &eb);
+    if (msgBuf == NULL)
+        System_abort("RxBuf allocation failed");
+
+    /* Create the task that monitors the record pulse and record
+     * hold signals from the DTC controller. The DTC drives these
+     * two signals to handle enabling or disabling any tracks for
+     * record during operation.
+     */
+
+    Error_init(&eb);
+    Task_Params_init(&taskParams);
+    taskParams.stackSize = 2048;
+    taskParams.priority  = 10;
+    Task_create((Task_FuncPtr)RecordTaskFxn, &taskParams, &eb);
+
+    /****************************************************************
+     * Enter the main application button processing loop forever.
+     ****************************************************************/
+
+    for(;;)
+    {
+        /* Get pointer to header plus message receive buffer */
+        DCS_IPCMSG_HDR* msg = (DCS_IPCMSG_HDR*)msgBuf;
+
+        /* Specifies the max buffer size our receiver can hold. This gets updated on
+         * return and contains the actual number of header and message bytes received.
+         */
+        msg->length = RXBUFSIZ;
+
+        /* Attempt to receive an IPC message */
+        rc = IPCCMD_ReadMessage(ipcHandle, msg);
+
+        /* Toggle the status LED on each packet receive or timeout */
+        GPIO_toggle(Board_ledStatus);
+
+        /* No packet received, loop and continue waiting for a packet */
+        if (rc == IPC_ERR_TIMEOUT)
+            continue;
+
+        /* Check for any error attempting to read a packet */
+        if (rc != IPC_ERR_SUCCESS)
+        {
+            System_printf("IPCCMD_ReadMessage() error %d\n", rc);
+            System_flush();
+            continue;
+        }
+
+        /* Flash LED on each packet received */
+        GPIO_write(Board_ledStatus, PIN_HIGH);
+
+        /* reset return error/status fields */
+        msg->error  = 0;
+        msg->status = 0;
+
+        /* Dispatch the message by opcode received */
+        switch(msg->opcode)
+        {
+        case DCS_OP_SET_TRACKS:     /* set all 24-track states */
+            rc = HandleSetTracks(ipcHandle, (DCS_IPCMSG_SET_TRACKS*)msgBuf);
+            break;
+
+        case DCS_OP_GET_TRACKS:     /* get all 24-track states */
+            rc = HandleGetTracks(ipcHandle, (DCS_IPCMSG_GET_TRACKS*)msgBuf);
+            break;
+
+        case DCS_OP_SET_TRACK:      /* set single track state  */
+            rc = HandleSetTrack(ipcHandle, (DCS_IPCMSG_SET_TRACK*)msgBuf);
+            break;
+
+        case DCS_OP_GET_TRACK:      /* get single track state  */
+            rc = HandleGetTrack(ipcHandle, (DCS_IPCMSG_GET_TRACK*)msgBuf);
+            break;
+
+        case DCS_OP_SET_SPEED:      /* set tape speed hi/lo    */
+            rc = HandleSetSpeed(ipcHandle, (DCS_IPCMSG_SET_SPEED*)msgBuf);
+            break;
+
+        case DCS_OP_GET_NUMTRACKS:  /* get num tracks supported */
+            rc = HandleGetNumTracks(ipcHandle, (DCS_IPCMSG_GET_NUMTRACKS*)msgBuf);
+            break;
+
+        default:
+            /* Transmit a NAK error response to client */
+            rc = IPCCMD_WriteNAK(ipcHandle);
+            break;
+        }
+
+        if (rc != IPC_ERR_SUCCESS)
+        {
+            System_printf("ipc tx error %d\n", rc);
+            System_flush();
+        }
+
+        /* Flash LED on each packet received */
+        GPIO_write(Board_ledStatus, PIN_LOW);
+    }
+}
 
 //*****************************************************************************
 // This is a helper function takes a track state and checks to see if the
@@ -716,49 +865,6 @@ uint16_t GetMonCtrlMaskFromTrackState(uint8_t* tracks)
 
     /* Combine A-reg and B-reg into 16-bit value */
     mask = (maskB << 8) | (maskA & 0xFF);
-
-    return mask;
-}
-
-//*****************************************************************************
-// This functions reads 8 channel state bytes from a track state array
-// and creates a port-A and port-B mask value combined as a 16-bit word that
-// contains the record hold and record strobe enable bits for eight channels.
-// The upper 8-bits contains the port-B register value for the record pulse
-// signal and the lower 8-bits contains the port-A register value for the
-// record hold signal. These two bits control the record functions for
-// driving eight channels of record control.
-//*****************************************************************************
-
-uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks)
-{
-    size_t i;
-    uint16_t mask;
-    uint16_t maskA = 0;
-    uint16_t maskB = 0;
-    uint16_t bitA  = 0x01;
-    uint16_t bitB  = 0x01;
-
-    for (i=0; i < 8; i++)
-    {
-        /* Lower byte is record ready state */
-        if (tracks[i] & DCS_T_READY)
-            maskA |= bitA;
-
-        bitA <<= 1;
-
-        /* Upper byte is record enabled state */
-        if (tracks[i] & DCS_T_RECORD)
-            maskB |= bitB;
-
-        bitB <<= 1;
-    }
-
-    /* Combine A-reg and B-reg into 16-bit value */
-    mask = (maskB << 8) | (maskA & 0xFF);
-
-    /* flip all bits to invert logic for open collector output driver */
-    mask = ~mask;
 
     return mask;
 }
@@ -820,88 +926,6 @@ void WriteAllMonitorModes(void)
 }
 
 //*****************************************************************************
-// Write all record hold modes from the track state array to all 24 tracks
-// across the I/O expanders. Note the record hold and record strobe I/Os
-// are active low logic.
-//*****************************************************************************
-
-void WriteAllRecordModes(void)
-{
-    uint16_t mask1 = 0;
-    uint16_t mask2 = 0;
-    uint16_t mask3 = 0;
-
-    /* Must have at least 8 tracks! */
-
-    if (g_sys.numTracks < 8)
-        return;
-
-    /* Get record flags for tracks 1-8 */
-    mask1 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[0]);
-
-    if (g_sys.numTracks > 8)
-    {
-        /* Get record flags for tracks 9-16 */
-        mask2 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[8]);
-
-        /* Get record flags for tracks 17-24 */
-        if (g_sys.numTracks > 16)
-            mask3 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[16]);
-    }
-
-    /*** Assert any RECORD HOLD lines (lower 8-bits active low) ***/
-
-    /* channels 01-08 */
-    MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOA, (uint8_t)(mask1 & 0xFF));
-
-    if (g_sys.numTracks > 8)
-    {
-        /* channels 09-16 */
-        MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOA, (uint8_t)(mask2 & 0xFF));
-
-        /* channels 17-24 */
-        if (g_sys.numTracks > 16)
-            MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOA, (uint8_t)(mask3 & 0xFF));
-    }
-
-    /* Setup time after record hold lines are set */
-    Task_sleep(10);
-
-    /*** Assert any RECORD STROBE lines to begin strobe pulse ***/
-
-    /* channels 01-08 */
-    MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOB, (uint8_t)(mask1 >> 8));
-
-    if (g_sys.numTracks > 8)
-    {
-        /* channels 09-16 */
-        MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, (uint8_t)(mask2 >> 8));
-
-        /* channels 17-24 */
-        if (g_sys.numTracks > 16)
-            MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, (uint8_t)(mask3 >> 8));
-    }
-
-    /* Record pulse low duration! */
-    Task_sleep(50);
-
-    /*** Set any RECORD STROBE lines back high non-asserted ***/
-
-    /* channels 01-08 */
-    MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOB, 0xFF);
-
-    if (g_sys.numTracks > 8)
-    {
-        /* channels 09-16 */
-        MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, 0xFF);
-
-        /* channels 17-24 */
-        if (g_sys.numTracks > 16)
-            MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, 0xFF);
-    }
-}
-
-//*****************************************************************************
 //
 //*****************************************************************************
 
@@ -919,7 +943,7 @@ int HandleSetTracks(
     WriteAllMonitorModes();
 
     /* Set all record hold modes on the channel I/O cards */
-    WriteAllRecordModes();
+    //WriteAllRecordModes();
 
     /* Transmit an ACK only response to client */
     rc = IPCCMD_WriteACK(handle);
@@ -977,7 +1001,7 @@ int HandleSetTrack(
         WriteAllMonitorModes();
 
         /* Set all record hold modes on the channel I/O cards */
-        WriteAllRecordModes();
+        //WriteAllRecordModes();
 
         /* Transmit an ACK only response client */
         rc = IPCCMD_WriteACK(handle);

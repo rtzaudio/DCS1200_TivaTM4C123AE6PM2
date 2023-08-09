@@ -216,20 +216,22 @@ bool MCP23S17_write(
 	transaction.txBuf = (Ptr)&txBuffer;
 	transaction.rxBuf = (Ptr)&rxBuffer;
 
+#if (MCP_THREAD_SAFE > 0)
+    IArg key = GateMutex_enter(GateMutex_handle(&(handle->gate)));
+#endif
+
 	/* Hold SPI chip select low */
 	GPIO_write(handle->gpioCS, PIN_LOW);
 
 	/* Initiate SPI transfer of opcode */
-
 	success = SPI_transfer(handle->spiHandle, &transaction);
-
-	if (!success)
-	{
-	    System_printf("Unsuccessful SPI transfer to MCP23S17\n");
-	}
 
 	/* Release SPI chip select */
 	GPIO_write(handle->gpioCS, PIN_HIGH);
+
+#if (MCP_THREAD_SAFE > 0)
+    GateMutex_leave(GateMutex_handle(&(handle->gate)), key);
+#endif
 
 	return success;
 }
@@ -258,19 +260,22 @@ bool MCP23S17_read(
 	transaction.txBuf = (Ptr)&txBuffer;
 	transaction.rxBuf = (Ptr)&rxBuffer;
 
+#if (MCP_THREAD_SAFE > 0)
+    IArg key = GateMutex_enter(GateMutex_handle(&(handle->gate)));
+#endif
+
 	/* Hold SPI chip select low */
 	GPIO_write(handle->gpioCS, PIN_LOW);
 
 	/* Initiate SPI transfer of opcode */
     success = SPI_transfer(handle->spiHandle, &transaction);
 
-    if (!success)
-	{
-	    System_printf("Unsuccessful SPI transfer to MCP23S17\n");
-	}
-
 	/* Release SPI chip select */
 	GPIO_write(handle->gpioCS, PIN_HIGH);
+
+#if (MCP_THREAD_SAFE > 0)
+    GateMutex_leave(GateMutex_handle(&(handle->gate)), key);
+#endif
 
 	/* Return the register data byte */
 	*pucData = rxBuffer[2];
