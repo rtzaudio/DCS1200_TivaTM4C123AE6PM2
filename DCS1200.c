@@ -404,6 +404,7 @@ Void RecordTaskFxn(UArg arg0, UArg arg1)
         case RECORD_HOLD_CHANGE:
             //System_printf("HOLD %u\n", msg.ui32Mask);
             //System_flush();
+
             if (!msg.ui32Mask)
                 RecordEnable();
             else
@@ -449,7 +450,7 @@ uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks)
         bitA <<= 1;
 
         /* Upper byte is record STROBE bit flags */
-        if (tracks[i] & DCS_T_RECORD)
+        if (tracks[i] & DCS_T_READY)
             maskB |= bitB;
 
         bitB <<= 1;
@@ -546,11 +547,11 @@ void RecordDisable(void)
     /*** Release any RECORD HOLD lines (lower 8-bits active low) ***/
 
     /* Channels 01-08 */
-    MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOA, (uint8_t)(mask1 & 0xFF));
+    MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOA, 0xFF);
     /* Channels 09-16 */
-    MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOA, (uint8_t)(mask2 & 0xFF));
+    MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOA, 0xFF);
     /* Channels 17-24 */
-    MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOA, (uint8_t)(mask3 & 0xFF));
+    MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOA, 0xFF);
 
     /*** Set any RECORD STROBE lines back high non-asserted ***/
 
