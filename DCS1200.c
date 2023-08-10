@@ -82,26 +82,48 @@
 #include "DCS1200.h"
 #include "Utils.h"
 
-#define RXBUFSIZ    64
-
-/* Mailbox Event Messages */
-typedef enum RecordEventType{
-    RECORD_PULSE_CHANGE,
-    RECORD_HOLD_CHANGE,
-} RecordEventType;
-
-typedef struct RecordEventMessage{
-    RecordEventType eventType;
-    uint32_t        ui32Index;
-    uint32_t        ui32Mask;
-} RecordEventMessage;
-
 /*** Global Data Items ***/
+
 SYSCFG g_cfg;
 SYSDAT g_sys;
 
 /* Message Mailbox Handles */
+
 Mailbox_Handle mailboxCommand = NULL;
+
+/* MCP23S17 init parameters for MONITOR control */
+
+static MCP23S17_InitData initMon[] = {
+    { MCP_IOCONA, C_SEQOP },            /* Configure for byte mode  */
+    { MCP_IOCONB, C_SEQOP },            /* Configure for byte mode  */
+    { MCP_IODIRA, 0x00    },            /* Port A - all outputs     */
+    { MCP_IODIRB, 0x00    },            /* Port B - all outputs     */
+    { MCP_GPIOA, 0x00     },            /* Port A - all outputs LOW */
+    { MCP_GPIOB, 0x00     },            /* Port B - all outputs LOW */
+};
+
+/* Default MCP23S17 parameters structure */
+
+static MCP23S17_Params monParams = {
+    initMon,
+    sizeof(initMon)/sizeof(MCP23S17_InitData)
+};
+
+/* MCP23S17 init parameters for RECORD control */
+
+static MCP23S17_InitData initRec[] = {
+    { MCP_IOCONA, C_SEQOP },            /* Configure for byte mode  */
+    { MCP_IOCONB, C_SEQOP },            /* Configure for byte mode  */
+    { MCP_IODIRA, 0x00    },            /* Port A - all outputs     */
+    { MCP_IODIRB, 0x00    },            /* Port B - all outputs     */
+    { MCP_GPIOA,  0xFF    },            /* Port A - all outputs HI  */
+    { MCP_GPIOB,  0xFF    },            /* Port B - all outputs HI  */
+};
+
+static MCP23S17_Params recParams = {
+    initRec,
+    sizeof(initRec)/sizeof(MCP23S17_InitData)
+};
 
 /*** Static Function Prototypes ***/
 
@@ -121,7 +143,8 @@ uint16_t GetMonCtrlMaskFromTrackState(uint8_t* tracks);
 uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks);
 
 void WriteAllMonitorModes(void);
-void WriteAllRecordModes(void);
+void RecordEnable(void);
+void RecordDisable(void);
 
 int HandleSetTracks(IPCCMD_Handle handle, DCS_IPCMSG_SET_TRACKS* msg);
 int HandleGetTracks(IPCCMD_Handle handle, DCS_IPCMSG_GET_TRACKS* msg);
@@ -318,52 +341,9 @@ bool Init_Peripherals(void)
         return false;
     }
 
-    return true;
-}
-
-//*****************************************************************************
-// Initialize and open I/O expander peripherals we'll be using
-//*****************************************************************************
-
-bool Init_Devices(void)
-{
-    /* MCP23S17 init parameters for MONITOR control */
-
-    static MCP23S17_InitData initMon[] = {
-        { MCP_IOCONA, C_SEQOP },            /* Configure for byte mode  */
-        { MCP_IOCONB, C_SEQOP },            /* Configure for byte mode  */
-        { MCP_IODIRA, 0x00    },            /* Port A - all outputs     */
-        { MCP_IODIRB, 0x00    },            /* Port B - all outputs     */
-        { MCP_GPIOA, 0x00     },            /* Port A - all outputs LOW */
-        { MCP_GPIOB, 0x00     },            /* Port B - all outputs LOW */
-    };
-
-    /* Default MCP23S17 parameters structure */
-
-    static MCP23S17_Params monParams = {
-        initMon,
-        sizeof(initMon)/sizeof(MCP23S17_InitData)
-    };
-
-    /* MCP23S17 init parameters for RECORD control */
-
-    static MCP23S17_InitData initRec[] = {
-        { MCP_IOCONA, C_SEQOP },            /* Configure for byte mode  */
-        { MCP_IOCONB, C_SEQOP },            /* Configure for byte mode  */
-        { MCP_IODIRA, 0x00    },            /* Port A - all outputs     */
-        { MCP_IODIRB, 0x00    },            /* Port B - all outputs     */
-        { MCP_GPIOA,  0xFF    },            /* Port A - all outputs HI  */
-        { MCP_GPIOB,  0xFF    },            /* Port B - all outputs HI  */
-    };
-
-    static MCP23S17_Params recParams = {
-        initRec,
-        sizeof(initRec)/sizeof(MCP23S17_InitData)
-    };
-
     /* Create and attach I/O expanders to SPI ports */
 
-    /* Setup the SPI tracks to initialize each I/O expander card on the DCS1200 motherboard.
+    /* Attach the SPI buses to each I/O expander card on the DCS1200 motherboard.
      * Each I/O expander card controls 8-tracks and has two I/O expanders on each card.
      * The first expander selects the monitor mode (input, sync, repro) with two bits
      * to control the tri-state line drivers. The second expander selects the channel
@@ -424,6 +404,10 @@ Void RecordTaskFxn(UArg arg0, UArg arg1)
         case RECORD_HOLD_CHANGE:
             //System_printf("HOLD %u\n", msg.ui32Mask);
             //System_flush();
+            if (!msg.ui32Mask)
+                RecordEnable();
+            else
+                RecordDisable();
             break;
 
         case RECORD_PULSE_CHANGE:
@@ -458,13 +442,13 @@ uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks)
 
     for (i=0; i < 8; i++)
     {
-        /* Lower byte is record ready state */
+        /* Lower byte is record HOLD bit flags */
         if (tracks[i] & DCS_T_READY)
             maskA |= bitA;
 
         bitA <<= 1;
 
-        /* Upper byte is record active state */
+        /* Upper byte is record STROBE bit flags */
         if (tracks[i] & DCS_T_RECORD)
             maskB |= bitB;
 
@@ -486,33 +470,24 @@ uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks)
 
 void RecordEnable(void)
 {
-    size_t i;
     uint16_t mask1;
     uint16_t mask2;
     uint16_t mask3;
 
-    for (i=0; i < DCS_NUM_TRACKS; i++)
-    {
-        if (g_sys.trackState[i] & DCS_T_READY)
-        {
-            g_sys.recordState[i] |= DCS_T_RECORD;
-        }
-    }
-
     /* Get record flags for tracks 1-8 */
-    mask1 = GetRecCtrlMaskFromTrackState(&g_sys.recordState[0]);
+    mask1 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[0]);
     /* Get record flags for tracks 9-16 */
-    mask2 = GetRecCtrlMaskFromTrackState(&g_sys.recordState[8]);
+    mask2 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[8]);
     /* Get record flags for tracks 17-24 */
-    mask3 = GetRecCtrlMaskFromTrackState(&g_sys.recordState[16]);
+    mask3 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[16]);
 
     /*** Assert any RECORD HOLD lines (lower 8-bits active low) ***/
 
-    /* channels 01-08 */
+    /* Channels 01-08 */
     MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOA, (uint8_t)(mask1 & 0xFF));
-    /* channels 09-16 */
+    /* Channels 09-16 */
     MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOA, (uint8_t)(mask2 & 0xFF));
-    /* channels 17-24 */
+    /* Channels 17-24 */
     MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOA, (uint8_t)(mask3 & 0xFF));
 
     /* Setup time after record hold lines are set */
@@ -520,11 +495,11 @@ void RecordEnable(void)
 
     /*** Assert any RECORD STROBE lines to begin strobe pulse ***/
 
-    /* channels 01-08 */
+    /* Channels 01-08 */
     MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOB, (uint8_t)(mask1 >> 8));
-    /* channels 09-16 */
+    /* Channels 09-16 */
     MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, (uint8_t)(mask2 >> 8));
-    /* channels 17-24 */
+    /* Channels 17-24 */
     MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, (uint8_t)(mask3 >> 8));
 
     /* Record pulse low duration! */
@@ -532,11 +507,11 @@ void RecordEnable(void)
 
     /*** Set any RECORD STROBE lines back high non-asserted ***/
 
-    /* channels 01-08 */
+    /* Channels 01-08 */
     MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOB, 0xFF);
-    /* channels 09-16 */
+    /* Channels 09-16 */
     MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, 0xFF);
-    /* channels 17-24 */
+    /* Channels 17-24 */
     MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, 0xFF);
 }
 
@@ -551,36 +526,39 @@ void RecordDisable(void)
     uint16_t mask2;
     uint16_t mask3;
 
-    /* Clear record active flag in shadow record status memory */
+    /* Clear any record active flag */
 
     for (i=0; i < DCS_NUM_TRACKS; i++)
     {
-        g_sys.recordState[i] &= ~(DCS_T_RECORD);
+        if (!(g_sys.trackState[i] & DCS_T_READY))
+        {
+            g_sys.trackState[i] &= ~(DCS_T_RECORD);
+        }
     }
 
-    /* Get record flags for tracks 1-8 */
-    mask1 = GetRecCtrlMaskFromTrackState(&g_sys.recordState[0]);
-    /* Get record flags for tracks 9-16 */
-    mask2 = GetRecCtrlMaskFromTrackState(&g_sys.recordState[8]);
-    /* Get record flags for tracks 17-24 */
-    mask3 = GetRecCtrlMaskFromTrackState(&g_sys.recordState[16]);
+    /* Get record hold flags for tracks 1-8 */
+    mask1 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[0]);
+    /* Get record hold flags for tracks 9-16 */
+    mask2 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[8]);
+    /* Get record hold flags for tracks 17-24 */
+    mask3 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[16]);
 
     /*** Release any RECORD HOLD lines (lower 8-bits active low) ***/
 
-    /* channels 01-08 */
+    /* Channels 01-08 */
     MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOA, (uint8_t)(mask1 & 0xFF));
-    /* channels 09-16 */
+    /* Channels 09-16 */
     MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOA, (uint8_t)(mask2 & 0xFF));
-    /* channels 17-24 */
+    /* Channels 17-24 */
     MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOA, (uint8_t)(mask3 & 0xFF));
 
     /*** Set any RECORD STROBE lines back high non-asserted ***/
 
-    /* channels 01-08 */
+    /* Channels 01-08 */
     MCP23S17_write(g_sys.handle_RecCtrl[0], MCP_GPIOB, 0xFF);
-    /* channels 09-16 */
+    /* Channels 09-16 */
     MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, 0xFF);
-    /* channels 17-24 */
+    /* Channels 17-24 */
     MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, 0xFF);
 }
 
@@ -667,9 +645,6 @@ Void MainTask(UArg a0, UArg a1)
 
     /* Create all the peripheral objects */
     Init_Peripherals();
-
-    /* Initialize all the peripheral devices */
-    Init_Devices();
 
     /* Initialize the default system parameters */
     SysConfig_Init(&g_cfg);

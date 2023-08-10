@@ -72,6 +72,24 @@
 
 /*** System Structures *****************************************************/
 
+/* IPC receive message buffer max size */
+
+#define RXBUFSIZ            64
+
+/* Record Task Mailbox Messages */
+
+/* Mailbox Event Messages */
+typedef enum RecordEventType{
+    RECORD_PULSE_CHANGE,
+    RECORD_HOLD_CHANGE,
+} RecordEventType;
+
+typedef struct RecordEventMessage{
+    RecordEventType eventType;
+    uint32_t        ui32Index;
+    uint32_t        ui32Mask;
+} RecordEventMessage;
+
 /* This structure contains runtime and program configuration data that is
  * stored and read from EEPROM. The structure size must be 4 byte aligned.
  */
