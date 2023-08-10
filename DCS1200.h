@@ -82,6 +82,7 @@
 typedef enum RecordEventType{
     RECORD_PULSE_CHANGE,
     RECORD_HOLD_CHANGE,
+    RECORD_HOLD_CHANGE
 } RecordEventType;
 
 typedef struct RecordEventMessage{

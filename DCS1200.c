@@ -901,6 +901,19 @@ void WriteAllMonitorModes(void)
     }
 }
 
+
+void ApplyAllMonitorModes(unsigned int index)
+{
+    uint32_t mask;
+    RecordEventMessage msg;
+
+    msg.eventType = RECORD_PULSE_CHANGE;
+    msg.ui32Index = index;
+    msg.ui32Mask  = mask;
+
+    Mailbox_post(mailboxCommand, &msg, BIOS_NO_WAIT);
+ }
+
 //*****************************************************************************
 //
 //*****************************************************************************
