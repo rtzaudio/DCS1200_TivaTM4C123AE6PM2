@@ -2,7 +2,7 @@
  *
  * DCS-1200 Digital Channel Switcher for Ampex MM-1200 Tape Machines
  *
- * Copyright (C) 2016, RTZ Professional Audio, LLC
+ * Copyright (C) 2023, RTZ Professional Audio, LLC
  * All Rights Reserved
  *
  * RTZ is registered trademark of RTZ Professional Audio, LLC
@@ -134,17 +134,20 @@ Void RecordTaskFxn(UArg arg0, UArg arg1);
 
 bool Init_Hardware(void);
 bool Init_Peripherals(void);
-bool Init_Devices(void);
 
-bool WriteRegisterAB(MCP23S17_Handle handle, uint16_t mask);
+/* hardware interrupt handlers for gpio pins */
+void HwiRecordPulse(unsigned int index);
+void HwiRecordHold(unsigned int index);
 
 uint8_t xlateStandby(uint8_t trackState);
 uint16_t GetMonCtrlMaskFromTrackState(uint8_t* tracks);
 uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks);
 
-void WriteAllMonitorModes(void);
-void RecordEnable(void);
-void RecordDisable(void);
+void WriteRecordEnable(void);
+void WriteRecordDisable(void);
+void WriteMonitorModes(void);
+
+void QueueWriteMonitorModes(void);
 
 int HandleSetTracks(IPCCMD_Handle handle, DCS_IPCMSG_SET_TRACKS* msg);
 int HandleGetTracks(IPCCMD_Handle handle, DCS_IPCMSG_GET_TRACKS* msg);
@@ -152,10 +155,6 @@ int HandleSetTrack(IPCCMD_Handle handle, DCS_IPCMSG_SET_TRACK* msg);
 int HandleGetTrack(IPCCMD_Handle handle, DCS_IPCMSG_GET_TRACK* msg);
 int HandleSetSpeed(IPCCMD_Handle handle, DCS_IPCMSG_SET_SPEED* msg);
 int HandleGetNumTracks(IPCCMD_Handle handle, DCS_IPCMSG_GET_NUMTRACKS* msg);
-
-/* hardware interrupt handlers for gpio pins */
-void HwiRecordPulse(unsigned int index);
-void HwiRecordHold(unsigned int index);
 
 //*****************************************************************************
 // Main Program Entry Point
@@ -185,9 +184,8 @@ Int main()
 
     mailboxCommand = Mailbox_create(sizeof(RecordEventMessage), 10, &mboxParams, &eb);
 
-    if (mailboxCommand == NULL) {
+    if (mailboxCommand == NULL)
         System_abort("Mailbox create failed\nAborting...");
-    }
 
     /* Start the main application button polling task */
 
@@ -362,64 +360,63 @@ bool Init_Peripherals(void)
     g_sys.handle_MonMode[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_MonMode_SS, &monParams);
     g_sys.handle_RecCtrl[2] = MCP23S17_create(g_sys.spiIoEx[2], Board_Card3_RecCtrl_SS, &recParams);
 
-    /* Setup the callback GPIO hardware interrupt handlers */
-    GPIO_setCallback(Board_Record_Pulse, HwiRecordPulse);
-    GPIO_setCallback(Board_Record_Hold, HwiRecordHold);
-
-    /* Enable GPIO record hold and record pulse pin interrupts */
-    GPIO_enableInt(Board_Record_Pulse);
-    GPIO_enableInt(Board_Record_Hold);
-
     return true;
 }
 
 //*****************************************************************************
-// This task handles any record enable/disable signal events for all channels.
-// GPIO interrupt events are triggered any time the record hold or record
-// pulse line changes state. The DTC sets the REC_HOLD_N and REC_PULSE_N to
-// signal the user is requesting record mode to be enabled or disabled via
-// the transport record/play control buttons. A switcher card channel will
-// remain in record until the hold line is dropped for that channel. The
-// record pulse line triggers the switcher card to enter record mode.
+// This is a helper function takes a track state and checks to see if the
+// flag bits DCS_T_MONITOR and DCS_T_STANDBY are set. If so, this means we
+// want to override the current channel mode and switch the track to input
+// mode instead to handle the standby monitor function.
 //*****************************************************************************
 
-Void RecordTaskFxn(UArg arg0, UArg arg1)
+uint8_t xlateStandby(uint8_t trackState)
 {
-    RecordEventMessage msg;
-
-    /*
-     * Now begin the main program loop processing button press events
+    /* If monitor mode enabled and the standby monitor flag is active,
+     * then we want to switch to input mode regardless.
      */
-
-    while (true)
+    if ((trackState & DCS_T_MONITOR) && (trackState & DCS_T_STANDBY))
     {
-        /* Wait for a message up to 1 second */
-        if (!Mailbox_pend(mailboxCommand, &msg, BIOS_WAIT_FOREVER))
-        {
-            continue;
-        }
+        /* Mask out the current track mode (sync/repro/input) */
+        trackState &= ~(DCS_MODE_MASK);
 
-        switch(msg.eventType)
-        {
-        case RECORD_HOLD_CHANGE:
-            //System_printf("HOLD %u\n", msg.ui32Mask);
-            //System_flush();
+        /* Force input mode since standby monitor is active */
+        trackState |= DCS_TRACK_INPUT;
+    };
 
-            if (!msg.ui32Mask)
-                RecordEnable();
-            else
-                RecordDisable();
-            break;
+    return trackState;
+}
 
-        case RECORD_PULSE_CHANGE:
-            //System_printf("PULSE %u\n", msg.ui32Mask);
-            //System_flush();
-            break;
+//*****************************************************************************
+// This functions read 8-bytes and creates a monitor mode bit mask for the
+// port-A and port-B values combined as a 16-bit word. The upper 8-bits
+// contains the port-B register value for the monitor mode and the lower
+// 8-bits contains the port-A register value. This word specifies the channel
+// state (repro, sync or input) for 8-tracks of an I/O card on the DCS.
+//*****************************************************************************
 
-        default:
-            break;
-        }
-    }
+uint16_t GetMonCtrlMaskFromTrackState(uint8_t* tracks)
+{
+    uint16_t maskA = 0;
+    uint16_t maskB = 0;
+    uint16_t mask;
+
+    /* Monitor mask for port-A on the I/O expander */
+    maskA |= ((xlateStandby(tracks[0]) & DCS_MODE_MASK) << 0);
+    maskA |= ((xlateStandby(tracks[1]) & DCS_MODE_MASK) << 2);
+    maskA |= ((xlateStandby(tracks[2]) & DCS_MODE_MASK) << 4);
+    maskA |= ((xlateStandby(tracks[3]) & DCS_MODE_MASK) << 6);
+
+    /* Monitor mask for port-B on the I/O expander */
+    maskB |= ((xlateStandby(tracks[4]) & DCS_MODE_MASK) << 0);
+    maskB |= ((xlateStandby(tracks[5]) & DCS_MODE_MASK) << 2);
+    maskB |= ((xlateStandby(tracks[6]) & DCS_MODE_MASK) << 4);
+    maskB |= ((xlateStandby(tracks[7]) & DCS_MODE_MASK) << 6);
+
+    /* Combine A-reg and B-reg into 16-bit value */
+    mask = (maskB << 8) | (maskA & 0xFF);
+
+    return mask;
 }
 
 //*****************************************************************************
@@ -469,7 +466,7 @@ uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks)
 //
 //*****************************************************************************
 
-void RecordEnable(void)
+void WriteRecordEnable(void)
 {
     uint16_t mask1;
     uint16_t mask2;
@@ -520,7 +517,7 @@ void RecordEnable(void)
 //
 //*****************************************************************************
 
-void RecordDisable(void)
+void WriteRecordDisable(void)
 {
     size_t i;
     uint16_t mask1;
@@ -564,7 +561,58 @@ void RecordDisable(void)
 }
 
 //*****************************************************************************
+// Write all monitors modes from the track state array to all 24 tracks
+// across the I/O expanders.
+//*****************************************************************************
+
+void WriteMonitorModes(void)
+{
+    uint16_t mask;
+
+    /*** Set monitor modes for tracks 1-8 ***/
+
+    /* Read 8-bytes from the track state array and create 16-bit register mask */
+    mask = GetMonCtrlMaskFromTrackState(&g_sys.trackState[0]);
+    /* Set 16-bits on the I/O expander to configure the monitor modes */
+    MCP23S17_write(g_sys.handle_MonMode[0], MCP_GPIOA, (uint8_t)(mask & 0xFF));
+    MCP23S17_write(g_sys.handle_MonMode[0], MCP_GPIOB, (uint8_t)((mask >> 8) & 0xFF));
+
+    /*** Set monitor modes for tracks 9-16 ***/
+
+    /* Read 8-bytes from the track state array and create 16-bit register mask */
+    mask = GetMonCtrlMaskFromTrackState(&g_sys.trackState[8]);
+    /* Set 16-bits on the I/O expander to configure the monitor modes */
+    MCP23S17_write(g_sys.handle_MonMode[1], MCP_GPIOA, (uint8_t)(mask & 0xFF));
+    MCP23S17_write(g_sys.handle_MonMode[1], MCP_GPIOB, (uint8_t)((mask >> 8) & 0xFF));
+
+    /*** Set monitor modes for tracks 17-24 ***/
+
+    /* Read 8-bytes from the track state array and create 16-bit register mask */
+    mask = GetMonCtrlMaskFromTrackState(&g_sys.trackState[16]);
+    /* Set 16-bits on the I/O expander to configure the monitor modes */
+    MCP23S17_write(g_sys.handle_MonMode[2], MCP_GPIOA, (uint8_t)(mask & 0xFF));
+    MCP23S17_write(g_sys.handle_MonMode[2], MCP_GPIOB, (uint8_t)((mask >> 8) & 0xFF));
+}
+
+//*****************************************************************************
+// Post a message to the record handler task to update all monitor modes.
+//*****************************************************************************
+
+void QueueWriteMonitorModes(void)
+{
+    RecordEventMessage msg;
+
+    msg.eventType = WRITE_MONITOR_MODES;
+    msg.ui32Index = 0;
+    msg.ui32Mask  = 0;
+
+    Mailbox_post(mailboxCommand, &msg, BIOS_NO_WAIT);
+ }
+
+//*****************************************************************************
 // HWI Callback function for record pulse and record hold lines from DTC.
+// These queue messages to the record handler task which enables and disables
+// record modes for any or all of the tracks.
 //*****************************************************************************
 
 void HwiRecordPulse(unsigned int index)
@@ -611,6 +659,54 @@ void HwiRecordHold(unsigned int index)
     msg.ui32Mask  = mask;
 
     Mailbox_post(mailboxCommand, &msg, BIOS_NO_WAIT);
+}
+
+//*****************************************************************************
+// This task handles any record enable/disable signal events for all channels.
+// GPIO interrupt events are triggered any time the record hold or record
+// pulse line changes state. The DTC sets the REC_HOLD_N and REC_PULSE_N to
+// signal the user is requesting record mode to be enabled or disabled via
+// the transport record/play control buttons. A switcher card channel will
+// remain in record until the hold line is dropped for that channel. The
+// record pulse line triggers the switcher card to enter record mode.
+//*****************************************************************************
+
+Void RecordTaskFxn(UArg arg0, UArg arg1)
+{
+    RecordEventMessage msg;
+
+    /*
+     * Now begin the main program loop processing button press events
+     */
+
+    while (true)
+    {
+        /* Wait for a message */
+        if (!Mailbox_pend(mailboxCommand, &msg, BIOS_WAIT_FOREVER))
+            continue;
+
+        switch(msg.eventType)
+        {
+        case RECORD_HOLD_CHANGE:
+            // The REC_HOLD_N gpio line changed state
+            if (!msg.ui32Mask)
+                WriteRecordEnable();
+            else
+                WriteRecordDisable();
+            break;
+
+        case RECORD_PULSE_CHANGE:
+            // The REC_PULSE_N gpio line changed state
+            break;
+
+        case WRITE_MONITOR_MODES:
+            WriteMonitorModes();
+            break;
+
+        default:
+            break;
+        }
+    }
 }
 
 //*****************************************************************************
@@ -680,9 +776,7 @@ Void MainTask(UArg a0, UArg a1)
 
     IPCCMD_Params_init(&ipcParams);
     ipcParams.uartHandle = uartHandle;
-
     ipcHandle = IPCCMD_create(&ipcParams);
-
     if (ipcHandle == NULL)
         System_abort("IPCCMD_create() failed");
 
@@ -704,6 +798,18 @@ Void MainTask(UArg a0, UArg a1)
     taskParams.stackSize = 2048;
     taskParams.priority  = 10;
     Task_create((Task_FuncPtr)RecordTaskFxn, &taskParams, &eb);
+
+    /* Setup the record HOLD and PULSE interrupt handlers
+     * and enable interrupts for each of these GPIO lines.
+     */
+
+    /* Setup the callback GPIO hardware interrupt handlers */
+    GPIO_setCallback(Board_Record_Pulse, HwiRecordPulse);
+    GPIO_setCallback(Board_Record_Hold, HwiRecordHold);
+
+    /* Enable GPIO record hold and record pulse pin interrupts */
+    GPIO_enableInt(Board_Record_Pulse);
+    GPIO_enableInt(Board_Record_Hold);
 
     /****************************************************************
      * Enter the main application button processing loop forever.
@@ -789,132 +895,6 @@ Void MainTask(UArg a0, UArg a1)
 }
 
 //*****************************************************************************
-// This is a helper function takes a track state and checks to see if the
-// flag bits DCS_T_MONITOR and DCS_T_STANDBY are set. If so, this means we
-// want to override the current channel mode and switch the track to input
-// mode instead to handle the standby monitor function.
-//*****************************************************************************
-
-uint8_t xlateStandby(uint8_t trackState)
-{
-    /* If monitor mode enabled and the standby monitor flag is active,
-     * then we want to switch to input mode regardless.
-     */
-    if ((trackState & DCS_T_MONITOR) && (trackState & DCS_T_STANDBY))
-    {
-        /* Mask out the current track mode (sync/repro/input) */
-        trackState &= ~(DCS_MODE_MASK);
-
-        /* Force input mode since standby monitor is active */
-        trackState |= DCS_TRACK_INPUT;
-    };
-
-    return trackState;
-}
-
-//*****************************************************************************
-// This functions scans eight channel state bytes from a track state array
-// and creates a port-A and port-B mask value combined as a 16-bit word.
-// The upper 8-bits contains the port-B register value for the monitor
-// mode and the lower 8-bits contains the port-A register value. This word
-// specifies the channel state (repro, sync or input) for 8-tracks of
-// an I/O card on the DCS motherboard.
-//*****************************************************************************
-
-uint16_t GetMonCtrlMaskFromTrackState(uint8_t* tracks)
-{
-    uint16_t maskA = 0;
-    uint16_t maskB = 0;
-    uint16_t mask;
-
-    /* Monitor mask for port-A on the I/O expander */
-    maskA |= ((xlateStandby(tracks[0]) & DCS_MODE_MASK) << 0);
-    maskA |= ((xlateStandby(tracks[1]) & DCS_MODE_MASK) << 2);
-    maskA |= ((xlateStandby(tracks[2]) & DCS_MODE_MASK) << 4);
-    maskA |= ((xlateStandby(tracks[3]) & DCS_MODE_MASK) << 6);
-
-    /* Monitor mask for port-B on the I/O expander */
-    maskB |= ((xlateStandby(tracks[4]) & DCS_MODE_MASK) << 0);
-    maskB |= ((xlateStandby(tracks[5]) & DCS_MODE_MASK) << 2);
-    maskB |= ((xlateStandby(tracks[6]) & DCS_MODE_MASK) << 4);
-    maskB |= ((xlateStandby(tracks[7]) & DCS_MODE_MASK) << 6);
-
-    /* Combine A-reg and B-reg into 16-bit value */
-    mask = (maskB << 8) | (maskA & 0xFF);
-
-    return mask;
-}
-
-//*****************************************************************************
-// This function writes a 16-bit register mask to the A/B port on an
-// I/O expander to configure the track states of 8-tracks.
-//*****************************************************************************
-
-bool WriteRegisterAB(MCP23S17_Handle handle, uint16_t mask)
-{
-    /* Update Port-A & Port-B outputs */
-    MCP23S17_write(handle, MCP_GPIOA, (uint8_t)(mask & 0xFF));
-    MCP23S17_write(handle, MCP_GPIOB, (uint8_t)((mask >> 8) & 0xFF));
-    return true;
-}
-
-//*****************************************************************************
-// Write all monitors modes from the track state array to all 24 tracks
-// across the I/O expanders.
-//*****************************************************************************
-
-void WriteAllMonitorModes(void)
-{
-    uint16_t mask;
-
-    /*** Set monitor modes for tracks 1-8 ***/
-
-    if (g_sys.numTracks > 0)
-    {
-        /* Read 8-bytes from the track state array and create 16-bit register mask */
-        mask = GetMonCtrlMaskFromTrackState(&g_sys.trackState[0]);
-
-        /* Set 16-bits on the I/O expander to configure the monitor modes */
-        WriteRegisterAB(g_sys.handle_MonMode[0], mask);
-    }
-
-    /*** Set monitor modes for tracks 9-16 ***/
-
-    if (g_sys.numTracks > 8)
-    {
-        /* Read 8-bytes from the track state array and create 16-bit register mask */
-        mask = GetMonCtrlMaskFromTrackState(&g_sys.trackState[8]);
-
-        /* Set 16-bits on the I/O expander to configure the monitor modes */
-        WriteRegisterAB(g_sys.handle_MonMode[1], mask);
-    }
-
-    /*** Set monitor modes for tracks 17-24 ***/
-
-    if (g_sys.numTracks > 16)
-    {
-        /* Read 8-bytes from the track state array and create 16-bit register mask */
-        mask = GetMonCtrlMaskFromTrackState(&g_sys.trackState[16]);
-
-        /* Set 16-bits on the I/O expander to configure the monitor modes */
-        WriteRegisterAB(g_sys.handle_MonMode[2], mask);
-    }
-}
-
-
-void ApplyAllMonitorModes(unsigned int index)
-{
-    uint32_t mask;
-    RecordEventMessage msg;
-
-    msg.eventType = RECORD_PULSE_CHANGE;
-    msg.ui32Index = index;
-    msg.ui32Mask  = mask;
-
-    Mailbox_post(mailboxCommand, &msg, BIOS_NO_WAIT);
- }
-
-//*****************************************************************************
 //
 //*****************************************************************************
 
@@ -929,10 +909,7 @@ int HandleSetTracks(
     memcpy(g_sys.trackState, &msg->trackState, DCS_NUM_TRACKS);
 
     /* Set all the monitor modes on the channel I/O cards */
-    WriteAllMonitorModes();
-
-    /* Set all record hold modes on the channel I/O cards */
-    //WriteAllRecordModes();
+    QueueWriteMonitorModes();
 
     /* Transmit an ACK only response to client */
     rc = IPCCMD_WriteACK(handle);
@@ -987,10 +964,7 @@ int HandleSetTrack(
         g_sys.trackState[index] = msg->trackState;
 
         /* Set all the monitor modes on the channel I/O cards */
-        WriteAllMonitorModes();
-
-        /* Set all record hold modes on the channel I/O cards */
-        //WriteAllRecordModes();
+        QueueWriteMonitorModes();
 
         /* Transmit an ACK only response client */
         rc = IPCCMD_WriteACK(handle);
