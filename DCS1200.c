@@ -808,8 +808,8 @@ Void MainTask(UArg a0, UArg a1)
     GPIO_setCallback(Board_Record_Hold, HwiRecordHold);
 
     /* Enable GPIO record hold and record pulse pin interrupts */
-    GPIO_enableInt(Board_Record_Pulse);
-    GPIO_enableInt(Board_Record_Hold);
+    //GPIO_enableInt(Board_Record_Pulse);
+    //GPIO_enableInt(Board_Record_Hold);
 
     /****************************************************************
      * Enter the main application button processing loop forever.
