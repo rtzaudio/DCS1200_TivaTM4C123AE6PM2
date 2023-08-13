@@ -48,13 +48,14 @@ typedef IPCMSG_HDR DCS_IPCMSG_HDR;
 /* Upper bits indicate ready/record state */
 #define DCS_T_STANDBY           0x10        /* standby monitor active flag */
 #define DCS_T_MONITOR           0x20        /* standby monitor enable      */
-#define DCS_T_RECORD            0x40        /* track record active flag    */
-#define DCS_T_READY             0x80        /* track arm/ready for record  */
+#define DCS_T_READY             0x40        /* track arm/ready for record  */
+#define DCS_T_RECORD            0x80        /* track record active flag    */
 
 /*** SET ALL 24-TRACK STATES ***********************************************/
 
 typedef struct _DCS_IPCMSG_SET_TRACKS {
     DCS_IPCMSG_HDR  hdr;
+    uint8_t         flags;
     uint8_t         trackState[DCS_NUM_TRACKS];
 } DCS_IPCMSG_SET_TRACKS;
 
@@ -69,6 +70,7 @@ typedef struct _DCS_IPCMSG_GET_TRACKS {
 
 typedef struct _DCS_IPCMSG_SET_TRACK {
     DCS_IPCMSG_HDR  hdr;
+    uint8_t         flags;
     uint8_t         trackNum;
     uint8_t         trackState;
 } DCS_IPCMSG_SET_TRACK;

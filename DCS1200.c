@@ -143,11 +143,12 @@ uint8_t xlateStandby(uint8_t trackState);
 uint16_t GetMonCtrlMaskFromTrackState(uint8_t* tracks);
 uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks);
 
-void WriteRecordEnable(void);
-void WriteRecordDisable(void);
 void WriteMonitorModes(void);
+void WriteRecordModes(void);
+void WriteRecordDisable(void);
 
 void QueueWriteMonitorModes(void);
+void QueueWriteRecordModes(void);
 
 int HandleSetTracks(IPCCMD_Handle handle, DCS_IPCMSG_SET_TRACKS* msg);
 int HandleGetTracks(IPCCMD_Handle handle, DCS_IPCMSG_GET_TRACKS* msg);
@@ -447,7 +448,7 @@ uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks)
         bitA <<= 1;
 
         /* Upper byte is record STROBE bit flags */
-        if (tracks[i] & DCS_T_READY)
+        if (tracks[i] & DCS_T_RECORD)
             maskB |= bitB;
 
         bitB <<= 1;
@@ -466,7 +467,7 @@ uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks)
 //
 //*****************************************************************************
 
-void WriteRecordEnable(void)
+void WriteRecordModes(void)
 {
     uint16_t mask1;
     uint16_t mask2;
@@ -519,20 +520,15 @@ void WriteRecordEnable(void)
 
 void WriteRecordDisable(void)
 {
-    size_t i;
+    //size_t i;
     uint16_t mask1;
     uint16_t mask2;
     uint16_t mask3;
 
     /* Clear any record active flag */
 
-    for (i=0; i < DCS_NUM_TRACKS; i++)
-    {
-        if (!(g_sys.trackState[i] & DCS_T_READY))
-        {
-            g_sys.trackState[i] &= ~(DCS_T_RECORD);
-        }
-    }
+    //for (i=0; i < DCS_NUM_TRACKS; i++)
+    //    g_sys.trackState[i] &= ~(DCS_T_RECORD);
 
     /* Get record hold flags for tracks 1-8 */
     mask1 = GetRecCtrlMaskFromTrackState(&g_sys.trackState[0]);
@@ -603,6 +599,17 @@ void QueueWriteMonitorModes(void)
     RecordEventMessage msg;
 
     msg.eventType = WRITE_MONITOR_MODES;
+    msg.ui32Index = 0;
+    msg.ui32Mask  = 0;
+
+    Mailbox_post(mailboxCommand, &msg, BIOS_NO_WAIT);
+ }
+
+void QueueWriteRecordModes(void)
+{
+    RecordEventMessage msg;
+
+    msg.eventType = WRITE_RECORD_MODES;
     msg.ui32Index = 0;
     msg.ui32Mask  = 0;
 
@@ -688,10 +695,9 @@ Void RecordTaskFxn(UArg arg0, UArg arg1)
         switch(msg.eventType)
         {
         case RECORD_HOLD_CHANGE:
-            // The REC_HOLD_N gpio line changed state
-            if (!msg.ui32Mask)
-                WriteRecordEnable();
-            else
+            // The REC_HOLD_N gpio line changed state to high. Ensure
+            // we disable all record functions no matter what!
+            if (msg.ui32Mask)
                 WriteRecordDisable();
             break;
 
@@ -701,6 +707,10 @@ Void RecordTaskFxn(UArg arg0, UArg arg1)
 
         case WRITE_MONITOR_MODES:
             WriteMonitorModes();
+            break;
+
+        case WRITE_RECORD_MODES:
+            WriteRecordModes();
             break;
 
         default:
@@ -911,6 +921,10 @@ int HandleSetTracks(
     /* Set all the monitor modes on the channel I/O cards */
     QueueWriteMonitorModes();
 
+    /* Enable/disable RECORD on ready channels if flag is set */
+    if (msg->flags == 1)
+        QueueWriteRecordModes();
+
     /* Transmit an ACK only response to client */
     rc = IPCCMD_WriteACK(handle);
 
@@ -965,6 +979,10 @@ int HandleSetTrack(
 
         /* Set all the monitor modes on the channel I/O cards */
         QueueWriteMonitorModes();
+
+        /* Enable/disable RECORD on ready channels if flag is set */
+        if (msg->flags == 1)
+            QueueWriteRecordModes();
 
         /* Transmit an ACK only response client */
         rc = IPCCMD_WriteACK(handle);
