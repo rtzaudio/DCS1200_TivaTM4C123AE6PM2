@@ -449,7 +449,16 @@ uint16_t GetRecCtrlMaskFromTrackState(uint8_t* tracks)
 
         /* Upper byte is record STROBE bit flags */
         if (tracks[i] & DCS_T_RECORD)
-            maskB |= bitB;
+        {
+            /* If track isn't ready, then don't strobe record!
+             * This indicates improper track status bits were
+             * set, but we protect against this condition here
+             * so we don't strobe the record relay with the
+             * record hold flag not set also.
+             */
+            if (tracks[i] & DCS_T_READY)
+                maskB |= bitB;
+        }
 
         bitB <<= 1;
     }
@@ -744,7 +753,6 @@ Void MainTask(UArg a0, UArg a1)
     for (i=0; i < DCS_NUM_TRACKS; i++)
     {
         g_sys.trackState[i] = DCS_TRACK_MODE(DCS_TRACK_REPRO);
-        g_sys.recordState[i] = g_sys.trackState[i];
     }
 
     /* Initialize GPIO hardware pins */

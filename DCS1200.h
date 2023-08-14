@@ -118,7 +118,6 @@ typedef struct _SYSDATA
     /* Global Data */
     uint32_t numTracks;
     uint8_t trackState[DCS_NUM_TRACKS];
-    uint8_t recordState[DCS_NUM_TRACKS];
     uint8_t tapeSpeed;
     uint8_t monitorMode;
 } SYSDAT;
