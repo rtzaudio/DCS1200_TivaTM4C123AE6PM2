@@ -773,7 +773,7 @@ Void MainTask(UArg a0, UArg a1)
 
     uartParams.readMode       = UART_MODE_BLOCKING;
     uartParams.writeMode      = UART_MODE_BLOCKING;
-    uartParams.readTimeout    = 2000;                   // 1 second read timeout
+    uartParams.readTimeout    = 1000;                   // 1 second read timeout
     uartParams.writeTimeout   = BIOS_WAIT_FOREVER;
     uartParams.readCallback   = NULL;
     uartParams.writeCallback  = NULL;
