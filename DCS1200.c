@@ -188,6 +188,9 @@ Int main()
     if (mailboxCommand == NULL)
         System_abort("Mailbox create failed\nAborting...");
 
+    /* Set status LED on */
+    GPIO_write(Board_ledStatus, Board_LED_ON);
+
     /* Start the main application button polling task */
 
     Error_init(&eb);
@@ -213,9 +216,6 @@ bool Init_Hardware(void)
 {
     uint32_t bits;
 
-    /* Set status LED on */
-    GPIO_write(Board_ledStatus, Board_LED_ON);
-
     /* Set speed select relay to high speed */
     GPIO_write(Board_SpeedSelect, PIN_LOW);
 
@@ -223,9 +223,6 @@ bool Init_Hardware(void)
     GPIO_write(Board_resetIoExpanders, PIN_LOW);
     Task_sleep(10);
     GPIO_write(Board_resetIoExpanders, PIN_HIGH);
-
-    /* Set status LED off */
-    GPIO_write(Board_ledStatus, Board_LED_OFF);
 
     /* Read the four lower bits of the DIP switch and invert */
     bits = Board_readDIPSwitch();
@@ -563,6 +560,10 @@ void WriteRecordDisable(void)
     MCP23S17_write(g_sys.handle_RecCtrl[1], MCP_GPIOB, 0xFF);
     /* Channels 17-24 */
     MCP23S17_write(g_sys.handle_RecCtrl[2], MCP_GPIOB, 0xFF);
+
+    (void)mask1;
+    (void)mask2;
+    (void)mask3;
 }
 
 //*****************************************************************************
@@ -828,6 +829,9 @@ Void MainTask(UArg a0, UArg a1)
     /* Enable GPIO record hold and record pulse pin interrupts */
     //GPIO_enableInt(Board_Record_Pulse);
     //GPIO_enableInt(Board_Record_Hold);
+
+    /* Now set status LED off and it will blink on each command received */
+    GPIO_write(Board_ledStatus, Board_LED_OFF);
 
     /****************************************************************
      * Enter the main application button processing loop forever.
