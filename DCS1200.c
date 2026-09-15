@@ -530,9 +530,9 @@ void WriteRecordModes(void)
 void WriteRecordDisable(void)
 {
     //size_t i;
-    uint16_t mask1;
-    uint16_t mask2;
-    uint16_t mask3;
+    //uint16_t mask1;
+    //uint16_t mask2;
+    //uint16_t mask3;
 
     /* Clear any record active flag */
 
