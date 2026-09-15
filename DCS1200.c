@@ -530,9 +530,9 @@ void WriteRecordModes(void)
 void WriteRecordDisable(void)
 {
     //size_t i;
-    //uint16_t mask1;
-    //uint16_t mask2;
-    //uint16_t mask3;
+    uint16_t mask1;
+    uint16_t mask2;
+    uint16_t mask3;
 
     /* Clear any record active flag */
 
@@ -773,7 +773,7 @@ Void MainTask(UArg a0, UArg a1)
 
     uartParams.readMode       = UART_MODE_BLOCKING;
     uartParams.writeMode      = UART_MODE_BLOCKING;
-    uartParams.readTimeout    = 1000;                   // 1 second read timeout
+    uartParams.readTimeout    = 250;                        // 250ms read timeout
     uartParams.writeTimeout   = BIOS_WAIT_FOREVER;
     uartParams.readCallback   = NULL;
     uartParams.writeCallback  = NULL;
@@ -846,12 +846,13 @@ Void MainTask(UArg a0, UArg a1)
         /* Attempt to receive an IPC message */
         rc = IPCCMD_ReadMessage(ipcHandle, msg);
 
-        /* Toggle the status LED on each packet receive or timeout */
-        GPIO_toggle(Board_ledStatus);
-
         /* No packet received, loop and continue waiting for a packet */
         if (rc == IPC_ERR_TIMEOUT)
+        {
+            /* Status LED off on timeout */
+            GPIO_write(Board_ledStatus, PIN_LOW);
             continue;
+        }
 
         /* Check for any error attempting to read a packet */
         if (rc != IPC_ERR_SUCCESS)
@@ -906,9 +907,6 @@ Void MainTask(UArg a0, UArg a1)
             System_printf("ipc tx error %d\n", rc);
             System_flush();
         }
-
-        /* Flash LED on each packet received */
-        GPIO_write(Board_ledStatus, PIN_LOW);
     }
 }
 
